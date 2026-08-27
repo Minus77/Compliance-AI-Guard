@@ -1,0 +1,53 @@
+{
+  "minimax-multimodal": {
+    "profile_id": "minimax-multimodal",
+    "provider": "minimax",
+    "display_name": "MiniMax",
+    "model_id": "MiniMax",
+    "adapter_type": "mock",
+    "capabilities": ["vision", "audio", "text"],
+    "allowed_data_classes": ["pii_tokenized", "phi_tokenized"],
+    "region": "CN",
+    "credential_ref": "secrets/minimax-multimodal",
+    "endpoint_ref": "config/endpoints/minimax-multimodal",
+    "timeout_ms": 5000,
+    "token_budget": 4096,
+    "cost_tier": "high",
+    "enabled": true,
+    "version": "1"
+  },
+  "deepseek-routine": {
+    "profile_id": "deepseek-routine",
+    "provider": "deepseek",
+    "display_name": "DeepSeek V4 Flash",
+    "model_id": "DeepSeek V4 Flash",
+    "adapter_type": "mock",
+    "capabilities": ["text"],
+    "allowed_data_classes": ["pii_tokenized", "confidential", "internal", "public"],
+    "region": "CN",
+    "credential_ref": "secrets/deepseek-routine",
+    "endpoint_ref": "config/endpoints/deepseek-routine",
+    "timeout_ms": 5000,
+    "token_budget": 2048,
+    "cost_tier": "low",
+    "enabled": true,
+    "version": "1"
+  },
+  "kimi-complex": {
+    "profile_id": "kimi-complex",
+    "provider": "kimi",
+    "display_name": "Kimi K3",
+    "model_id": "Kimi K3",
+    "adapter_type": "mock",
+    "capabilities": ["text"],
+    "allowed_data_classes": ["internal", "confidential", "pii_tokenized"],
+    "region": "CN",
+    "credential_ref": "secrets/kimi-complex",
+    "endpoint_ref": "config/endpoints/kimi-complex",
+    "timeout_ms": 8000,
+    "token_budget": 4096,
+    "cost_tier": "medium",
+    "enabled": true,
+    "version": "1"
+  }
+}

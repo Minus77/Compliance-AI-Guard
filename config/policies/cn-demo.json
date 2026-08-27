@@ -1,0 +1,487 @@
+{
+  "policy_version": "CN-COMPLIANCE-2026-01",
+  "market": "CN",
+  "product_id": "PRODUCT-001",
+  "channel": "call_report",
+  "effective_from": "2026-01-01T00:00:00Z",
+  "effective_until": null,
+  "enabled": true,
+  "rules": {
+    "CN-001": {
+      "type": "potential_adverse_event",
+      "severity": "S1",
+      "decision": "human_review",
+      "patterns": [
+        "皮疹",
+        "恶心",
+        "呕吐",
+        "腹泻",
+        "头晕",
+        "头痛",
+        "瘙痒",
+        "不良反应",
+        "副作用",
+        "停药"
+      ],
+      "aliases": [
+        "ae",
+        "adverse_event",
+        "adverse-event",
+        "potential_adverse_event"
+      ],
+      "required_roles": [
+        "pharmacovigilance",
+        "medical_review"
+      ],
+      "sla_label": "8h",
+      "next_action": "route to pharmacovigilance intake and medical review",
+      "requires_evidence": true,
+      "evidence_gap_acceptable": false,
+      "reversible": true
+    },
+    "CN-002": {
+      "type": "serious_adverse_event",
+      "severity": "S0",
+      "decision": "human_review",
+      "patterns": [
+        "死亡",
+        "危及生命",
+        "生命危险",
+        "昏迷",
+        "休克",
+        "严重住院",
+        "致残",
+        "先天畸形"
+      ],
+      "aliases": [
+        "sae",
+        "serious_adverse_event",
+        "safety",
+        "safety_finding"
+      ],
+      "required_roles": [
+        "pharmacovigilance",
+        "medical_review"
+      ],
+      "sla_label": "4h",
+      "next_action": "immediate pharmacovigilance intake and medical review",
+      "requires_evidence": true,
+      "evidence_gap_acceptable": false,
+      "reversible": false
+    },
+    "CN-003": {
+      "type": "bribery_or_inducement",
+      "severity": "S1",
+      "decision": "blocked",
+      "patterns": [
+        "宴请",
+        "贿赂",
+        "回扣",
+        "红包",
+        "请客",
+        "礼品",
+        "处方回扣",
+        "好处费",
+        "违规激励"
+      ],
+      "aliases": [
+        "bribery",
+        "bribery_or_inducement",
+        "inducement"
+      ],
+      "required_roles": [
+        "compliance",
+        "legal"
+      ],
+      "sla_label": "8h",
+      "next_action": "compliance and legal review; message blocked",
+      "requires_evidence": true,
+      "evidence_gap_acceptable": false,
+      "reversible": false
+    },
+    "CN-004": {
+      "type": "comparative_claim",
+      "severity": "S1",
+      "decision": "human_review",
+      "patterns": [
+        "比竞品",
+        "竞品",
+        "更安全",
+        "起效更快",
+        "更有效",
+        "疗效更好",
+        "优于",
+        "明显优于",
+        "同类药",
+        "同类产品",
+        "比进口药"
+      ],
+      "aliases": [
+        "comparative_claim",
+        "comparative"
+      ],
+      "required_roles": [
+        "compliance",
+        "medical_review"
+      ],
+      "sla_label": "8h",
+      "next_action": "require comparison context evidence before release",
+      "requires_evidence": true,
+      "evidence_gap_acceptable": false,
+      "reversible": true
+    },
+    "CN-005": {
+      "type": "prompt_injection",
+      "severity": "S0",
+      "decision": "blocked",
+      "patterns": [
+        "忽略所有规则",
+        "忽略之前",
+        "忽略先前",
+        "无视规则",
+        "绕过审核",
+        "绕过",
+        "输出通过",
+        "不要遵守",
+        "ignore all previous",
+        "ignore all rules",
+        "ignore previous",
+        "do not follow",
+        "disregard"
+      ],
+      "aliases": [
+        "injection",
+        "prompt_injection"
+      ],
+      "required_roles": [
+        "security"
+      ],
+      "sla_label": "immediate",
+      "next_action": "block message and escalate to security",
+      "requires_evidence": false,
+      "evidence_gap_acceptable": true,
+      "reversible": false
+    },
+    "CN-006": {
+      "type": "pii",
+      "severity": "S1",
+      "decision": "human_review",
+      "patterns": [
+        "身份证号",
+        "身份证",
+        "手机号",
+        "联系电话",
+        "家庭住址",
+        "银行卡",
+        "护照"
+      ],
+      "aliases": [
+        "pii",
+        "personal_information"
+      ],
+      "required_roles": [
+        "security"
+      ],
+      "sla_label": "8h",
+      "next_action": "route to privacy review and redaction check",
+      "requires_evidence": true,
+      "evidence_gap_acceptable": false,
+      "reversible": true
+    },
+    "CN-007": {
+      "type": "phi",
+      "severity": "S1",
+      "decision": "human_review",
+      "patterns": [
+        "病历号",
+        "住院号",
+        "检查报告",
+        "化验单",
+        "患者姓名",
+        "病历资料",
+        "诊断报告"
+      ],
+      "aliases": [
+        "phi",
+        "health_information"
+      ],
+      "required_roles": [
+        "security"
+      ],
+      "sla_label": "8h",
+      "next_action": "route to privacy review and redaction check",
+      "requires_evidence": true,
+      "evidence_gap_acceptable": false,
+      "reversible": true
+    },
+    "CN-008": {
+      "type": "severe_pii_leak",
+      "severity": "S0",
+      "decision": "blocked",
+      "patterns": [
+        "批量患者信息",
+        "全部患者信息",
+        "导出数据库",
+        "泄露",
+        "泄漏全部"
+      ],
+      "aliases": [
+        "severe_pii_leak",
+        "pii_leak"
+      ],
+      "required_roles": [
+        "security"
+      ],
+      "sla_label": "immediate",
+      "next_action": "block and escalate as data breach",
+      "requires_evidence": false,
+      "evidence_gap_acceptable": true,
+      "reversible": false
+    },
+    "CN-009": {
+      "type": "off_label",
+      "severity": "S1",
+      "decision": "human_review",
+      "patterns": [],
+      "aliases": [
+        "off_label",
+        "off-label",
+        "unapproved_use"
+      ],
+      "required_roles": [
+        "compliance",
+        "medical_review"
+      ],
+      "sla_label": "8h",
+      "next_action": "label field mismatch review",
+      "requires_evidence": false,
+      "evidence_gap_acceptable": true,
+      "reversible": true
+    },
+    "CN-010": {
+      "type": "evidence_conflict",
+      "severity": "S1",
+      "decision": "human_review",
+      "patterns": [],
+      "aliases": [
+        "evidence_conflict",
+        "conflict"
+      ],
+      "required_roles": [
+        "compliance",
+        "medical_review"
+      ],
+      "sla_label": "8h",
+      "next_action": "resolve conflicting evidence before release",
+      "requires_evidence": true,
+      "evidence_gap_acceptable": false,
+      "reversible": true
+    },
+    "CN-011": {
+      "type": "expired_evidence",
+      "severity": "S1",
+      "decision": "human_review",
+      "patterns": [],
+      "aliases": [
+        "expired_evidence"
+      ],
+      "required_roles": [
+        "representative",
+        "medical_review"
+      ],
+      "sla_label": "24h",
+      "next_action": "re-retrieve current evidence; professional review",
+      "requires_evidence": true,
+      "evidence_gap_acceptable": false,
+      "reversible": true
+    },
+    "CN-012": {
+      "type": "missing_evidence",
+      "severity": "S2",
+      "decision": "needs_info",
+      "patterns": [],
+      "aliases": [
+        "missing_evidence",
+        "evidence_gap"
+      ],
+      "required_roles": [
+        "representative",
+        "medical_review"
+      ],
+      "sla_label": "24h",
+      "next_action": "collect supporting evidence",
+      "requires_evidence": false,
+      "evidence_gap_acceptable": true,
+      "reversible": true
+    },
+    "CN-013": {
+      "type": "missing_context",
+      "severity": "S2",
+      "decision": "needs_info",
+      "patterns": [],
+      "aliases": [
+        "missing_context",
+        "missing_entities"
+      ],
+      "required_roles": [
+        "reviewer"
+      ],
+      "sla_label": "24h",
+      "next_action": "request missing context or entities",
+      "requires_evidence": false,
+      "evidence_gap_acceptable": true,
+      "reversible": true
+    },
+    "CN-014": {
+      "type": "permission_failure",
+      "severity": "S1",
+      "decision": "blocked",
+      "patterns": [],
+      "aliases": [
+        "permission_failure",
+        "permission",
+        "access_denied"
+      ],
+      "required_roles": [
+        "security"
+      ],
+      "sla_label": "8h",
+      "next_action": "block action; review tool permissions",
+      "requires_evidence": false,
+      "evidence_gap_acceptable": true,
+      "reversible": false
+    },
+    "CN-015": {
+      "type": "irreversible_write",
+      "severity": "S0",
+      "decision": "blocked",
+      "patterns": [],
+      "aliases": [
+        "irreversible_write",
+        "irreversible_writes"
+      ],
+      "required_roles": [
+        "admin"
+      ],
+      "sla_label": "immediate",
+      "next_action": "block irreversible write; require admin approval",
+      "requires_evidence": false,
+      "evidence_gap_acceptable": true,
+      "reversible": false
+    },
+    "CN-016": {
+      "type": "security_issue",
+      "severity": "S1",
+      "decision": "blocked",
+      "patterns": [],
+      "aliases": [
+        "security",
+        "security_finding",
+        "security_issue",
+        "security_risk"
+      ],
+      "required_roles": [
+        "security"
+      ],
+      "sla_label": "8h",
+      "next_action": "security review",
+      "requires_evidence": true,
+      "evidence_gap_acceptable": false,
+      "reversible": false
+    },
+    "CN-017": {
+      "type": "unapproved_promotion",
+      "severity": "S0",
+      "decision": "blocked",
+      "patterns": [],
+      "aliases": [
+        "unapproved_promotion",
+        "explicit_unapproved_promotion"
+      ],
+      "required_roles": [
+        "compliance",
+        "legal"
+      ],
+      "sla_label": "4h",
+      "next_action": "compliance and legal review; message blocked",
+      "requires_evidence": true,
+      "evidence_gap_acceptable": false,
+      "reversible": false
+    },
+    "CN-018": {
+      "type": "formatting",
+      "severity": "S3",
+      "decision": "allow",
+      "patterns": [],
+      "aliases": [
+        "formatting",
+        "low_risk_formatting",
+        "style"
+      ],
+      "required_roles": [
+        "reviewer"
+      ],
+      "sla_label": "72h",
+      "next_action": "low-risk guidance: adjust formatting",
+      "requires_evidence": false,
+      "evidence_gap_acceptable": true,
+      "reversible": true
+    },
+    "CN-019": {
+      "type": "ambiguous_entity",
+      "severity": "S2",
+      "decision": "needs_info",
+      "patterns": [],
+      "aliases": [
+        "ambiguous_entity",
+        "ambiguous_hcp",
+        "unresolved_entity"
+      ],
+      "required_roles": [
+        "reviewer"
+      ],
+      "sla_label": "24h",
+      "next_action": "ask the author to confirm which person each mention refers to",
+      "requires_evidence": false,
+      "evidence_gap_acceptable": true,
+      "reversible": true
+    },
+    "CN-020": {
+      "type": "claim_discrepancy",
+      "severity": "S1",
+      "decision": "human_review",
+      "patterns": [],
+      "aliases": [
+        "claim_discrepancy",
+        "field_discrepancy"
+      ],
+      "required_roles": [
+        "compliance",
+        "medical_review"
+      ],
+      "sla_label": "8h",
+      "next_action": "confirm which indication and usage the narrative actually describes",
+      "requires_evidence": false,
+      "evidence_gap_acceptable": true,
+      "reversible": true
+    },
+    "CN-021": {
+      "type": "unresolved_indication",
+      "severity": "S2",
+      "decision": "needs_info",
+      "patterns": [],
+      "aliases": [
+        "unresolved_indication",
+        "unknown_indication"
+      ],
+      "required_roles": [
+        "medical_review"
+      ],
+      "sla_label": "24h",
+      "next_action": "ask which approved indication the narrative refers to",
+      "requires_evidence": false,
+      "evidence_gap_acceptable": true,
+      "reversible": true
+    }
+  }
+}

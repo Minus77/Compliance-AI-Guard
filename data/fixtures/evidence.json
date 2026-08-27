@@ -1,0 +1,180 @@
+{
+  "items": [
+    {
+      "evidence": {
+        "evidence_id": "EV-CN-2026-001",
+        "source_id": "CN-PI-2026-01",
+        "version": "CN-PI-2026-01",
+        "market": "CN",
+        "product_id": "PRODUCT-001",
+        "language": "zh-CN",
+        "tenant_id": "TENANT-CN",
+        "status": "active",
+        "effective_at": "2026-01-01T00:00:00Z",
+        "effective_from": "2026-01-01T00:00:00Z",
+        "effective_to": null,
+        "location": "char:0-120",
+        "quote": "本品适用于成人原发性高血压的治疗。推荐起始剂量80mg，每日一次口服，可长期使用。",
+        "hash": "sha256:3f9c0e1d2a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d",
+        "source_type": "label",
+        "access_scope": ["internal", "cn_release"],
+        "metadata": {"stance": "support", "claim": "dose_80mg", "indication": "IND-001"}
+      },
+      "content": "【适应症】本品适用于成人原发性高血压的治疗。\n\n【用法用量】推荐起始剂量80mg，每日一次口服，可长期使用。\n\n【禁忌】对本品活性成分过敏者禁用。"
+    },
+    {
+      "evidence": {
+        "evidence_id": "EV-CN-2026-002",
+        "source_id": "CN-PI-2026-01",
+        "version": "CN-PI-2026-01",
+        "market": "CN",
+        "product_id": "PRODUCT-001",
+        "language": "zh-CN",
+        "tenant_id": "TENANT-CN",
+        "status": "active",
+        "effective_at": "2026-01-01T00:00:00Z",
+        "effective_from": "2026-01-01T00:00:00Z",
+        "effective_to": null,
+        "location": "char:0-60",
+        "quote": "本品可作为单药治疗用于成人原发性高血压。",
+        "hash": "sha256:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+        "source_type": "label",
+        "access_scope": ["internal", "cn_release"],
+        "metadata": {"stance": "support", "claim": "combination_mono", "indication": "IND-001"}
+      },
+      "content": "【单药治疗】本品可作为单药治疗用于成人原发性高血压。"
+    },
+    {
+      "evidence": {
+        "evidence_id": "EV-CN-2026-003",
+        "source_id": "CN-EXTERNAL-2026-001",
+        "version": "CN-PI-2026-01",
+        "market": "CN",
+        "product_id": "PRODUCT-001",
+        "language": "zh-CN",
+        "tenant_id": "TENANT-CN",
+        "status": "active",
+        "effective_at": "2026-01-01T00:00:00Z",
+        "effective_from": "2026-01-01T00:00:00Z",
+        "effective_to": null,
+        "location": "char:0-80",
+        "quote": "一项外部回顾性研究提示每日100mg剂量在部分患者中疗效更优，但该剂量未获得批准。",
+        "hash": "sha256:9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b",
+        "source_type": "external_study",
+        "access_scope": ["internal", "cn_release"],
+        "metadata": {"stance": "contradict", "verdict": "negative", "claim": "dose_100mg"}
+      },
+      "content": "【外部研究】一项外部回顾性研究提示每日100mg剂量在部分患者中疗效更优，但该剂量未获得批准，与当前批准的80mg剂量不一致。"
+    },
+    {
+      "evidence": {
+        "evidence_id": "EV-CN-2024-001",
+        "source_id": "CN-PI-2024-01",
+        "version": "CN-PI-2024-01",
+        "market": "CN",
+        "product_id": "PRODUCT-001",
+        "language": "zh-CN",
+        "tenant_id": "TENANT-CN",
+        "status": "superseded",
+        "effective_at": "2024-01-01T00:00:00Z",
+        "effective_from": "2024-01-01T00:00:00Z",
+        "effective_to": "2025-12-31T00:00:00Z",
+        "location": "char:0-60",
+        "quote": "旧版说明书：每日剂量100mg。",
+        "hash": "sha256:b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+        "source_type": "label",
+        "access_scope": ["internal", "cn_release"],
+        "metadata": {"stance": "support", "claim": "dose_100mg"}
+      },
+      "content": "【适应症】本品适用于高血压治疗。\n\n【用法用量】每日剂量100mg，每日一次口服。"
+    },
+    {
+      "evidence": {
+        "evidence_id": "EV-HK-2026-001",
+        "source_id": "HK-PI-2026-01",
+        "version": "HK-PI-2026-01",
+        "market": "HK",
+        "product_id": "PRODUCT-001",
+        "language": "zh-HK",
+        "tenant_id": "TENANT-CN",
+        "status": "active",
+        "effective_at": "2026-01-01T00:00:00Z",
+        "effective_from": "2026-01-01T00:00:00Z",
+        "effective_to": null,
+        "location": "char:0-60",
+        "quote": "香港版本：适应症为高血压，每日剂量100mg。",
+        "hash": "sha256:c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2",
+        "source_type": "label",
+        "access_scope": ["internal"],
+        "metadata": {"stance": "support", "claim": "dose_100mg"}
+      },
+      "content": "【适应症】香港版本：适应症为高血压治疗。\n\n【剂量】每日剂量100mg口服。"
+    },
+    {
+      "evidence": {
+        "evidence_id": "EV-CN-2026-EXP",
+        "source_id": "CN-ADJUNCT-2026",
+        "version": "CN-PI-2026-01",
+        "market": "CN",
+        "product_id": "PRODUCT-001",
+        "language": "zh-CN",
+        "tenant_id": "TENANT-CN",
+        "status": "active",
+        "effective_at": "2026-01-01T00:00:00Z",
+        "effective_from": "2026-01-01T00:00:00Z",
+        "effective_to": "2026-06-30T00:00:00Z",
+        "location": "char:0-60",
+        "quote": "辅助研究：评估本品短期联合给药的安全性，研究窗口已结束。",
+        "hash": "sha256:d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3",
+        "source_type": "signed",
+        "access_scope": ["internal", "cn_release"],
+        "metadata": {"stance": "support", "claim": "combination_adjunct"}
+      },
+      "content": "【辅助研究】一项辅助研究评估本品与其他药物短期联合使用的安全性，研究窗口已结束。"
+    },
+    {
+      "evidence": {
+        "evidence_id": "EV-CN-2026-LEGAL",
+        "source_id": "CN-LEGAL-2026",
+        "version": "CN-PI-2026-01",
+        "market": "CN",
+        "product_id": "PRODUCT-001",
+        "language": "zh-CN",
+        "tenant_id": "TENANT-CN",
+        "status": "active",
+        "effective_at": "2026-01-01T00:00:00Z",
+        "effective_from": "2026-01-01T00:00:00Z",
+        "effective_to": null,
+        "location": "char:0-60",
+        "quote": "法务审查草稿：未公开的法律评估意见。",
+        "hash": "sha256:e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4",
+        "source_type": "signed",
+        "access_scope": ["legal_only"],
+        "metadata": {"stance": "support", "claim": "legal_review"}
+      },
+      "content": "【法律审查】法务部审查草稿，仅供法务人员查阅，未经批准不得对外引用。"
+    },
+    {
+      "evidence": {
+        "evidence_id": "EV-CN-2026-EXT-NR",
+        "source_id": "CN-WEB-2026-001",
+        "version": "CN-PI-2026-01",
+        "market": "CN",
+        "product_id": "PRODUCT-001",
+        "language": "zh-CN",
+        "tenant_id": "TENANT-CN",
+        "status": "active",
+        "effective_at": "2026-01-01T00:00:00Z",
+        "effective_from": "2026-01-01T00:00:00Z",
+        "effective_to": null,
+        "location": "char:0-60",
+        "quote": "某第三方网页声称本品适应症包含糖尿病，该信息未经批准。",
+        "hash": "sha256:f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5",
+        "source_type": "web",
+        "access_scope": ["internal", "cn_release"],
+        "metadata": {"stance": "support", "claim": "diabetes_off_label"}
+      },
+      "content": "【外部网页】某第三方网页声称本品适应症包含糖尿病，该信息未经批准，不应作为发布依据。"
+    }
+  ]
+}

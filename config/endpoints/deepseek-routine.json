@@ -1,0 +1,6 @@
+{
+  "_comment": "Opaque server-side endpoint mapping. Business routing name -> real upstream model. No secrets here; the API key comes from COMPLIANCE_GUARD_LLM_API_KEY or the gitignored local secrets file.",
+  "upstream_model": "claude-haiku-4-5-20251001",
+  "timeout_ms": 12000,
+  "max_output_tokens": 2048
+}

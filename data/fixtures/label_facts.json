@@ -1,0 +1,235 @@
+{
+  "labels": [
+    {
+      "product_id": "PRODUCT-001",
+      "market": "CN",
+      "version": "CN-PI-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null,
+      "indication": "成人原发性高血压",
+      "indication_id": "IND-001",
+      "population": "成人",
+      "line": "一线",
+      "dose": "80mg",
+      "route": "口服",
+      "duration": "长期",
+      "combination": "单药",
+      "contraindications": [
+        "对本品活性成分过敏者禁用"
+      ],
+      "warnings": [
+        "肾功能不全者慎用"
+      ]
+    },
+    {
+      "product_id": "PRODUCT-001",
+      "market": "CN",
+      "version": "CN-PI-2024-01",
+      "effective_from": "2024-01-01T00:00:00Z",
+      "effective_to": "2025-12-31T00:00:00Z",
+      "indication": "成人原发性高血压",
+      "indication_id": "IND-001",
+      "population": "成人",
+      "line": "一线",
+      "dose": "100mg",
+      "route": "口服",
+      "duration": "长期",
+      "combination": "单药",
+      "contraindications": [
+        "对本品活性成分过敏者禁用"
+      ],
+      "warnings": [
+        "肾功能不全者慎用"
+      ]
+    },
+    {
+      "product_id": "PRODUCT-001",
+      "market": "US",
+      "version": "US-PI-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null,
+      "indication": "成人原发性高血压",
+      "indication_id": "IND-008",
+      "population": "成人",
+      "line": "一线",
+      "dose": "80mg",
+      "route": "口服",
+      "duration": "长期",
+      "combination": "单药",
+      "contraindications": [
+        "对本品活性成分过敏者禁用"
+      ],
+      "warnings": [
+        "肾功能不全者慎用"
+      ]
+    },
+    {
+      "product_id": "PRODUCT-002",
+      "market": "CN",
+      "version": "CN-PI-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null,
+      "indication": "2型糖尿病",
+      "indication_id": "IND-002",
+      "population": "成人",
+      "line": "二线",
+      "dose": "500mg",
+      "route": "口服",
+      "duration": "长期",
+      "combination": "联用",
+      "contraindications": [
+        "严重肾功能损害者禁用"
+      ],
+      "warnings": [
+        "注意监测血糖"
+      ]
+    },
+    {
+      "product_id": "PRODUCT-002",
+      "market": "US",
+      "version": "US-PI-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null,
+      "indication": "2型糖尿病",
+      "indication_id": "IND-002",
+      "population": "成人",
+      "line": "二线",
+      "dose": "500mg",
+      "route": "口服",
+      "duration": "长期",
+      "combination": "联用",
+      "contraindications": [
+        "严重肾功能损害者禁用"
+      ],
+      "warnings": [
+        "注意监测血糖"
+      ]
+    },
+    {
+      "product_id": "PRODUCT-003",
+      "market": "CN",
+      "version": "CN-PI-2026-02",
+      "effective_from": "2026-02-01T00:00:00Z",
+      "effective_to": null,
+      "indication": "慢性心力衰竭",
+      "indication_id": "IND-003",
+      "population": "成人",
+      "line": "一线",
+      "dose": "10mg",
+      "route": "口服",
+      "duration": "长期",
+      "combination": "联用",
+      "contraindications": [
+        "心源性休克者禁用"
+      ],
+      "warnings": [
+        "起始剂量需缓慢递增"
+      ]
+    },
+    {
+      "product_id": "PRODUCT-003",
+      "market": "US",
+      "version": "US-PI-2026-02",
+      "effective_from": "2026-02-01T00:00:00Z",
+      "effective_to": null,
+      "indication": "慢性心力衰竭",
+      "indication_id": "IND-003",
+      "population": "成人",
+      "line": "一线",
+      "dose": "10mg",
+      "route": "口服",
+      "duration": "长期",
+      "combination": "联用",
+      "contraindications": [
+        "心源性休克者禁用"
+      ],
+      "warnings": [
+        "起始剂量需缓慢递增"
+      ]
+    },
+    {
+      "product_id": "PRODUCT-004",
+      "market": "CN",
+      "version": "CN-PI-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null,
+      "indication": "高脂血症",
+      "indication_id": "IND-004",
+      "population": "成人",
+      "line": "一线",
+      "dose": "20mg",
+      "route": "口服",
+      "duration": "长期",
+      "combination": "单药",
+      "contraindications": [
+        "活动性肝病者禁用"
+      ],
+      "warnings": [
+        "监测肝功能与肌酶"
+      ]
+    },
+    {
+      "product_id": "PRODUCT-004",
+      "market": "US",
+      "version": "US-PI-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null,
+      "indication": "高脂血症",
+      "indication_id": "IND-004",
+      "population": "成人",
+      "line": "一线",
+      "dose": "20mg",
+      "route": "口服",
+      "duration": "长期",
+      "combination": "单药",
+      "contraindications": [
+        "活动性肝病者禁用"
+      ],
+      "warnings": [
+        "监测肝功能与肌酶"
+      ]
+    },
+    {
+      "product_id": "PRODUCT-005",
+      "market": "CN",
+      "version": "CN-PI-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null,
+      "indication": "偏头痛",
+      "indication_id": "IND-005",
+      "population": "成人",
+      "line": "二线",
+      "dose": "50mg",
+      "route": "口服",
+      "duration": "短期",
+      "combination": "单药",
+      "contraindications": [
+        "缺血性心脏病者禁用"
+      ],
+      "warnings": [
+        "每月用药次数需受限"
+      ]
+    },
+    {
+      "product_id": "PRODUCT-005",
+      "market": "US",
+      "version": "US-PI-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null,
+      "indication": "偏头痛",
+      "indication_id": "IND-005",
+      "population": "成人",
+      "line": "二线",
+      "dose": "50mg",
+      "route": "口服",
+      "duration": "短期",
+      "combination": "单药",
+      "contraindications": [
+        "缺血性心脏病者禁用"
+      ],
+      "warnings": [
+        "每月用药次数需受限"
+      ]
+    }
+  ]
+}

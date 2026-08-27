@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.testdeps/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+artifacts/
+.DS_Store
+
+# runtime artifacts (regenerated on every run; keep out of accidental commits)
+data/audit/
+data/runtime_config.json
+# Local accounts. Holds scrypt password hashes and live session tokens: a
+# committed credential store is a credential store shared with everyone who
+# clones the repository, and the bootstrap recovery would then hand the same
+# account to all of them.
+data/users.json
+# Regression candidates carry masked case text awaiting review; they are local
+# working state, not part of the shipped golden set.
+data/golden_set/candidates.jsonl
+
+.superpowers/
+# live LLM credentials (never commit)
+config/secrets/

@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Compliance AI Guard</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="rx-frame">
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" role="img" focusable="false">
+          <path d="M16 2.5 4.5 7v9.2c0 6.9 4.8 11.6 11.5 13.3 6.7-1.7 11.5-6.4 11.5-13.3V7L16 2.5Z"
+                fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/>
+          <path d="M11 16.2h10M16 11.2v10" fill="none" stroke="currentColor"
+                stroke-width="2.1" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <span class="brand-title" data-i18n="app.title">Compliance AI Guard</span>
+        <span class="brand-sub" data-i18n="app.subtitle">医药合规预检 · 发布前决策网关</span>
+      </span>
+      <span class="badge badge-mode" id="mode-badge" data-i18n="header.modeMock">离线演示模式</span>
+    </div>
+    <nav class="workspace-nav" aria-label="Workspaces"
+         data-i18n-title="nav.shortcutHint" title="按 1–5 可快速切换工作台">
+      <button type="button" class="nav-btn is-active" data-workspace="representative"
+              aria-pressed="true" data-i18n="nav.representative">代表工作台</button>
+      <button type="button" class="nav-btn" data-workspace="reviewer"
+              aria-pressed="false" data-i18n="nav.reviewer">审核工作台</button>
+      <button type="button" class="nav-btn" data-workspace="policy"
+              aria-pressed="false" data-i18n="nav.policy">模型策略</button>
+      <button type="button" class="nav-btn" data-workspace="records"
+              aria-pressed="false" data-i18n="nav.records">我的记录</button>
+      <button type="button" class="nav-btn" data-workspace="governance"
+              aria-pressed="false" data-i18n="nav.governance">质量与审计</button>
+    </nav>
+    <div class="header-controls">
+      <button type="button" class="notif-button" id="notif-button"
+              aria-haspopup="true" aria-expanded="false"
+              data-i18n-title="notif.title" title="通知">
+        <span class="notif-glyph" aria-hidden="true">✉</span>
+        <span class="notif-label" data-i18n="notif.label">通知</span>
+        <span class="notif-count" id="notif-count" hidden aria-live="polite">0</span>
+      </button>
+      <div class="notif-panel" id="notif-panel" hidden role="dialog"
+           aria-labelledby="notif-panel-title">
+        <h3 id="notif-panel-title" data-i18n="notif.panelTitle">审核结论与通知</h3>
+        <ul class="notif-list" id="notif-list"></ul>
+        <p class="muted small" id="notif-empty" data-i18n="notif.empty">暂无新的通知。</p>
+      </div>
+      <label class="ctl-field" for="ui-locale">
+        <span class="ctl-label" data-i18n="header.uiLanguage">界面语言</span>
+        <select id="ui-locale" name="ui-locale" autocomplete="off">
+          <option value="zh-CN">简体中文</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <!-- Demo affordance, labelled as one. Hidden entirely when DEMO_MODE is
+           off, because a role picker that silently does nothing is worse than no
+           picker, and an unlabelled shortcut is indistinguishable from a hole. -->
+      <label class="ctl-field ctl-demo" for="role" id="demo-role-field" hidden>
+        <span class="ctl-label">
+          <span data-i18n="header.role">演示角色</span>
+          <span class="demo-flag" data-i18n="header.demoOnly">仅演示模式</span>
+        </span>
+        <select id="role" name="x-demo-role" autocomplete="off">
+          <option value="field_rep" data-i18n="role.field_rep">医药代表</option>
+          <option value="reviewer" data-i18n="role.reviewer">审核人</option>
+          <option value="auditor" data-i18n="role.auditor">内部审计</option>
+          <option value="architect" data-i18n="role.architect">架构师</option>
+        </select>
+      </label>
+      <!-- Who the *server* says you are. -->
+      <div class="identity" id="identity" hidden>
+        <span class="identity-name" id="identity-name"></span>
+        <span class="identity-role" id="identity-role"></span>
+        <button type="button" class="btn btn-ghost btn-sm" id="signout"
+                data-i18n="auth.signOut">退出登录</button>
+      </div>
+      <p class="role-function" id="role-function"></p>
+    </div>
+  </header>
+  <!-- Sign-in. Shown when GET /api/auth/me reports no session, so the client asks
+       the server who it is rather than assuming. Without this the page would render
+       and then 401 on every request, which reads as a broken app instead of one
+       asking you to sign in. -->
+  <section class="signin" id="signin" hidden aria-labelledby="signin-title">
+    <div class="signin-card">
+      <h2 id="signin-title" data-i18n="auth.title">请先登录</h2>
+      <p class="hint" data-i18n="auth.lead">合规记录需要可追溯到具体的人，因此不支持匿名提交。</p>
+      <div class="fld fld-block">
+        <label class="fld-label" for="signin-username" data-i18n="auth.username">用户名</label>
+        <input type="text" id="signin-username" autocomplete="username" />
+      </div>
+      <div class="fld fld-block">
+        <label class="fld-label" for="signin-password" data-i18n="auth.password">密码</label>
+        <input type="password" id="signin-password" autocomplete="current-password" />
+      </div>
+      <div class="actions-row">
+        <button type="button" class="btn btn-primary" id="signin-submit"
+                data-i18n="auth.signIn">登录</button>
+      </div>
+      <p class="field-error" id="signin-error" role="alert" hidden></p>
+      <p class="muted small" data-i18n="auth.scopeNote">本地最小可用会话，非企业级单点登录：无身份提供方、无二次验证。</p>
+    </div>
+  </section>
+
+  <!-- Forced change of the generated default credential. A default password that
+       keeps working is a backdoor with documentation. -->
+  <section class="signin" id="password-change" hidden aria-labelledby="pwd-title">
+    <div class="signin-card">
+      <h2 id="pwd-title" data-i18n="auth.changeTitle">请先修改初始密码</h2>
+      <p class="hint" data-i18n="auth.changeLead">初始密码由系统生成且必须修改后才能继续使用。</p>
+      <div class="fld fld-block">
+        <label class="fld-label" for="pwd-current" data-i18n="auth.currentPassword">当前密码</label>
+        <input type="password" id="pwd-current" autocomplete="current-password" />
+      </div>
+      <div class="fld fld-block">
+        <label class="fld-label" for="pwd-new" data-i18n="auth.newPassword">新密码（至少 12 个字符）</label>
+        <input type="password" id="pwd-new" autocomplete="new-password" />
+      </div>
+      <div class="actions-row">
+        <button type="button" class="btn btn-primary" id="pwd-submit"
+                data-i18n="auth.changeSubmit">修改密码</button>
+      </div>
+      <p class="field-error" id="pwd-error" role="alert" hidden></p>
+    </div>
+  </section>
+
+  <main class="app-main">
+    <!-- ================= Representative workspace ================= -->
+    <section id="workspace-representative" class="workspace" aria-labelledby="rep-title">
+      <div class="ws-head">
+        <h2 id="rep-title" data-i18n="rep.title">拜访记录合规预检</h2>
+        <p class="ws-lead" data-i18n="rep.lead">在内容对外发出之前，由服务端判定可否放行。</p>
+      </div>
+      <div id="rep-gate" class="gate-panel" hidden></div>
+      <div id="rep-body">
+      <form id="check-form" class="check-form">
+        <fieldset class="panel panel-source">
+          <legend data-i18n="rep.sourceSection">内容来源</legend>
+          <p class="hint" data-i18n="rep.connectorHint">来源已插件化，可对接 Veeva CRM / Vault。</p>
+          <div class="source-grid">
+            <label class="fld" for="src-connector">
+              <span class="fld-label" data-i18n="rep.connector">来源系统</span>
+              <select id="src-connector"></select>
+            </label>
+            <label class="fld" for="src-record">
+              <span class="fld-label" data-i18n="rep.record">上游记录</span>
+              <select id="src-record"></select>
+            </label>
+            <button type="button" class="btn btn-secondary" id="src-load"
+                    data-i18n="rep.loadRecord">读取记录</button>
+          </div>
+          <p class="source-meta" id="src-meta" hidden></p>
+          <p class="connector-desc" id="src-desc"></p>
+        </fieldset>
+        <fieldset class="panel">
+          <legend data-i18n="rep.contextSection">业务上下文</legend>
+          <div class="context-grid">
+            <label class="fld" for="ctx-product">
+              <span class="fld-label" data-i18n="rep.product">产品</span>
+              <select id="ctx-product" name="product_id">
+                <option value="PRODUCT-001">PRODUCT-001</option>
+              </select>
+            </label>
+            <label class="fld" for="ctx-market">
+              <span class="fld-label" data-i18n="rep.market">市场</span>
+              <select id="ctx-market" name="market">
+                <option value="CN">CN</option>
+              </select>
+            </label>
+            <label class="fld" for="ctx-channel">
+              <span class="fld-label" data-i18n="rep.channel">渠道</span>
+              <select id="ctx-channel" name="channel">
+                <option value="call_report" data-i18n="channel.call_report">拜访记录</option>
+                <option value="med_comms" data-i18n="channel.med_comms">医学沟通</option>
+              </select>
+            </label>
+            <label class="fld" for="ctx-language">
+              <span class="fld-label" data-i18n="rep.contentLanguage">内容语言</span>
+              <select id="ctx-language" name="language">
+                <option value="zh-CN">zh-CN</option>
+              </select>
+            </label>
+          </div>
+          <p class="hint" data-i18n="rep.contentLanguageHint">业务字段，决定证据检索范围。</p>
+        </fieldset>
+        <fieldset class="panel">
+          <legend data-i18n="rep.attachSection">附件（图片 / 音频）</legend>
+          <p class="hint" data-i18n="rep.attachHint">仅登记引用与元数据，不上传原始文件。</p>
+          <div class="attach-actions">
+            <button type="button" class="btn btn-ghost" id="attach-image"
+                    data-i18n="rep.addImage">添加图片引用</button>
+            <button type="button" class="btn btn-ghost" id="attach-audio"
+                    data-i18n="rep.addAudio">添加音频引用</button>
+            <input type="file" id="attach-image-input" accept="image/*" hidden />
+            <input type="file" id="attach-audio-input" accept="audio/*" hidden />
+          </div>
+          <ul class="attach-list" id="attach-list"></ul>
+          <p class="muted small" id="attach-empty" data-i18n="rep.attachEmpty">尚未添加附件。</p>
+        </fieldset>
+        <fieldset class="panel panel-narrative">
+          <legend data-i18n="rep.narrativeSection">拜访记录正文</legend>
+
+          <!-- Draft recovery. Offered, never applied automatically: silently
+               replacing what is on screen is its own kind of data loss. -->
+          <div class="draft-banner" id="draft-banner" hidden role="status">
+            <span class="draft-text" id="draft-banner-text"
+                  data-i18n="rep.draftFound">发现一份未提交的草稿。</span>
+            <span class="draft-actions">
+              <button type="button" class="btn btn-ghost btn-sm" id="draft-restore"
+                      data-i18n="rep.draftRestore">恢复草稿</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="draft-discard"
+                      data-i18n="rep.draftDiscard">丢弃</button>
+            </span>
+          </div>
+
+          <label class="fld fld-block" for="content">
+            <span class="fld-label" data-i18n="rep.contentLabel">拜访记录正文</span>
+            <textarea id="content" name="content" rows="8" required
+              aria-describedby="content-help content-error live-hints"
+              data-i18n-placeholder="rep.contentPlaceholder"
+              placeholder="在此粘贴业务叙述。"></textarea>
+          </label>
+          <p class="hint" id="content-help" data-i18n="rep.contentHelp">边写边提示；正文完整保留，不会因为提示而被删改。</p>
+
+          <!-- Inline, persistent. A toast cannot be re-read, and a validation
+               message you cannot re-read is a message you have to guess at. -->
+          <p class="field-error" id="content-error" role="alert" hidden></p>
+
+          <!-- L0: local word cues while typing. Speaks only when it matches;
+               it never says "looks fine", because a local word list cannot
+               support that claim. -->
+          <div class="live-hints" id="live-hints" aria-live="polite"></div>
+
+          <!-- L1: server-side deterministic pre-check, no model call. -->
+          <div class="precheck-panel" id="precheck-panel" hidden aria-live="polite">
+            <div class="precheck-head">
+              <span class="precheck-kicker" data-i18n="rep.precheckTitle">提交前预检</span>
+              <span class="precheck-verdict" id="precheck-verdict"></span>
+              <span class="precheck-timing muted small" id="precheck-timing"></span>
+            </div>
+            <ul class="precheck-list" id="precheck-list"></ul>
+          </div>
+
+          <div class="actions-row">
+            <button type="submit" class="btn btn-primary" id="check-submit"
+                    data-i18n="rep.submit">提交并完成合规检查</button>
+            <span class="kbd-hint muted small" data-i18n="rep.submitShortcut">Cmd/Ctrl + Enter</span>
+            <span class="loading" id="check-loading" hidden aria-live="polite"
+                  data-i18n="rep.checking">检查中…</span>
+          </div>
+
+          <!-- Service-level failure: keeps the draft, offers a retry. -->
+          <div class="submit-error" id="submit-error" role="alert" hidden>
+            <span id="submit-error-text"></span>
+            <button type="button" class="btn btn-secondary btn-sm" id="submit-retry"
+                    data-i18n="rep.retry">重试</button>
+          </div>
+        </fieldset>
+      </form>
+
+      <!-- Teaching material, deliberately after the working flow and collapsed.
+           Six sample buttons above the editor make a daily tool look like a demo. -->
+      <details class="demo-drawer" id="demo-drawer">
+        <summary data-i18n="rep.examplesTitle">示例与教学</summary>
+        <div class="demo-drawer-body">
+          <p class="hint" data-i18n="rep.scenarioNote">示例文本固定为中文：风险识别依赖中文关键词。</p>
+          <div class="scenario-row">
+            <button type="button" class="chip" data-scenario="normal" data-i18n="scenario.normal">常规</button>
+            <button type="button" class="chip" data-scenario="ae" data-i18n="scenario.ae">不良事件</button>
+            <button type="button" class="chip" data-scenario="pii" data-i18n="scenario.pii">个人信息</button>
+            <button type="button" class="chip" data-scenario="off_label" data-i18n="scenario.off_label">超说明书</button>
+            <button type="button" class="chip" data-scenario="redline" data-i18n="scenario.redline">红线</button>
+            <button type="button" class="chip" data-scenario="injection" data-i18n="scenario.injection">提示注入</button>
+          </div>
+        </div>
+      </details>
+      <!-- Shown when the model check did not complete. Three facts, in this order:
+           the AI did not finish, the content was kept, a person now has it.
+           Without them a fail-safe outcome reads as a failure, and the rep's next
+           move is to resubmit or give up. -->
+      <section class="degraded-notice" id="degraded-notice" hidden role="status"
+               aria-labelledby="degraded-title">
+        <h3 id="degraded-title" data-i18n="degraded.title">AI 检查未完成，内容已保留</h3>
+        <p id="degraded-body" data-i18n="degraded.body">模型服务暂时不可用。系统不会因此放行内容，你写的原文已完整保存。</p>
+        <p class="hint" id="degraded-next" data-i18n="degraded.next">已转人工复核，有结论会通知你；无需重新提交。</p>
+      </section>
+
+      <section id="result-card" class="result-card" hidden aria-live="polite"
+               tabindex="-1" aria-labelledby="result-decision">
+        <div class="verdict" id="result-verdict">
+          <div class="verdict-main">
+            <!-- Icon + word + colour. Three channels, so a colour-blind reader
+                 loses nothing by not seeing the colour. -->
+            <span class="verdict-glyph" id="result-glyph" aria-hidden="true"></span>
+            <span class="verdict-kicker" data-i18n="result.decisionLabel">检查结论</span>
+            <strong class="verdict-decision" id="result-decision">—</strong>
+            <span class="verdict-hint" id="result-decision-hint"></span>
+          </div>
+          <p class="verdict-next" id="result-next-step"></p>
+        </div>
+
+        <!-- The three sentences, in a fixed order: what happened, why it
+             matters, what to do. A reader who stops after the third is still
+             correct. -->
+        <div class="guidance-cards" id="result-guidance"></div>
+
+        <!-- Missing ICSR elements, as fields rather than as a complaint. -->
+        <section class="followup-block" id="followup-block" hidden
+                 aria-labelledby="followup-title">
+          <h3 id="followup-title" data-i18n="followup.title">还差一点信息</h3>
+          <p class="hint" id="followup-reason"></p>
+          <div class="followup-fields" id="followup-fields"></div>
+          <div class="actions-row">
+            <button type="button" class="btn btn-primary btn-sm" id="followup-submit"
+                    data-i18n="followup.submit">提交补充信息</button>
+            <span class="loading" id="followup-loading" hidden aria-live="polite"
+                  data-i18n="followup.saving">提交中…</span>
+          </div>
+          <p class="field-error" id="followup-error" role="alert" hidden></p>
+        </section>
+
+        <!-- The way forward. A suggestion appears only when it passed the second
+             deterministic check; otherwise the guidance stands on its own, because
+             some findings must not be rewritten at all (rewriting an inducement
+             sentence would mean restating what happened). -->
+        <section class="rewrite-block" id="rewrite-block" hidden
+                 aria-labelledby="rewrite-title">
+          <h3 id="rewrite-title" data-i18n="rewrite.title">怎么改</h3>
+          <p class="rewrite-guidance" id="rewrite-guidance"></p>
+          <figure class="rewrite-suggestion" id="rewrite-suggestion" hidden>
+            <figcaption data-i18n="rewrite.suggestionLabel">建议改为（已再次检查，不含违规表述）</figcaption>
+            <blockquote id="rewrite-suggestion-text"></blockquote>
+            <button type="button" class="btn btn-secondary btn-sm" id="rewrite-apply"
+                    data-i18n="rewrite.apply">用这段替换正文</button>
+          </figure>
+          <p class="hint" id="rewrite-withheld" hidden></p>
+        </section>
+
+        <!-- Present only when something was blocked: a way forward, not a wall. -->
+        <section class="appeal-block" id="appeal-block" hidden
+                 aria-labelledby="appeal-title">
+          <h3 id="appeal-title" data-i18n="appeal.title">认为判断有误？</h3>
+          <p class="hint" data-i18n="appeal.hint">提出申诉不会立即解除拦截，会由有权限的同事复核后决定。</p>
+          <label class="fld fld-block" for="appeal-reason">
+            <span class="fld-label" data-i18n="appeal.reasonLabel">请说明理由</span>
+            <textarea id="appeal-reason" rows="3"
+                      data-i18n-placeholder="appeal.reasonPlaceholder"
+                      placeholder="例如：这是客户主动提出的要求，我只是如实记录。"></textarea>
+          </label>
+          <div class="actions-row">
+            <button type="button" class="btn btn-secondary btn-sm" id="appeal-submit"
+                    data-i18n="appeal.submit">提交申诉</button>
+          </div>
+          <p class="field-error" id="appeal-error" role="alert" hidden></p>
+        </section>
+
+        <div class="result-grid">
+          <article class="pane pane-safe">
+            <h3 data-i18n="result.safeView">安全视图（已脱敏）</h3>
+            <p class="safe-text" id="result-safe"></p>
+            <p class="hint" data-i18n="result.safeHint">个人信息已替换为代号，原文完整保留在记录里。</p>
+          </article>
+          <article class="pane">
+            <h3 data-i18n="result.next">后续动作</h3>
+            <ol class="next-list" id="result-next"></ol>
+          </article>
+          <article class="pane">
+            <h3 data-i18n="result.evidence">引用证据</h3>
+            <ul class="evidence-list" id="result-evidence"></ul>
+          </article>
+        </div>
+        <section id="pv-block" class="pv-block" hidden aria-label="Pharmacovigilance">
+          <div class="pv-head">
+            <h3 data-i18n="pv.title">药物警戒评估（ICSR）</h3>
+            <span class="pv-verdict" id="pv-verdict"></span>
+          </div>
+          <div id="pv-clock" class="pv-clock" hidden></div>
+          <div class="pv-grid">
+            <div>
+              <p class="kv-k" data-i18n="pv.criteriaTitle">个例安全性报告四项最低要求</p>
+              <ul class="pv-criteria" id="pv-criteria"></ul>
+              <p class="hint" data-i18n="pv.criteriaHint">四项齐备才构成有效 ICSR。</p>
+            </div>
+            <dl class="pv-meta" id="pv-meta"></dl>
+          </div>
+          <p class="hint" data-i18n="pv.scopeNote">本模块为演示用辅助判断。</p>
+        </section>
+        <!-- Machine codes live here: an auditor needs the exact rule ids, a
+             representative should not have to decode S1 to know what to do. -->
+        <details class="disclosure" id="tech-details">
+          <summary><span data-i18n="result.technical">技术详情（供审计核对）</span></summary>
+          <div class="tech-grid" id="tech-grid"></div>
+          <h4 data-i18n="result.findings">风险发现</h4>
+          <ul class="findings-list" id="result-findings"></ul>
+        </details>
+        <details class="disclosure" id="rag-block">
+          <summary><span data-i18n="result.rag">证据检索过程（RAG）</span></summary>
+          <div id="rag-body" class="rag-body"></div>
+        </details>
+        <details class="disclosure">
+          <summary><span data-i18n="sev.legend">风险等级说明</span></summary>
+          <ul class="sev-legend" id="sev-legend"></ul>
+        </details>
+        <div class="actions-row">
+          <button type="button" class="btn btn-ghost" id="result-trace-link"
+                  data-i18n="result.openTrace">查看完整审计链路</button>
+          <button type="button" class="btn btn-ghost" id="result-revise"
+                  data-i18n="result.revise">基于本稿修订后重新提交</button>
+        </div>
+      </section>
+      <section id="rep-trace" class="trace-panel" hidden aria-label="Trace">
+        <h3 data-i18n="result.trace">审计链路</h3>
+        <div id="rep-trace-body"></div>
+      </section>
+      </div>
+    </section>
+    <!-- ================= Reviewer workspace ================= -->
+    <section id="workspace-reviewer" class="workspace" aria-labelledby="rev-title" hidden>
+      <div class="ws-head">
+        <h2 id="rev-title" data-i18n="rev.title">专业审核</h2>
+      </div>
+      <div id="rev-gate" class="gate-panel" hidden></div>
+      <div class="review-layout" id="rev-body">
+        <aside class="queue-pane">
+          <h3 data-i18n="rev.queue">待审队列</h3>
+          <ul id="review-queue" class="review-queue"></ul>
+          <p class="muted small" id="review-queue-empty" data-i18n="rev.empty">暂无待审任务。</p>
+          <div id="signature-block" class="sig-block" hidden aria-live="polite"></div>
+        </aside>
+        <div class="review-detail-pane">
+          <div id="review-detail">
+            <p class="muted" data-i18n="rev.selectHint">从左侧选择任务。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- ================= Model policy workspace ================= -->
+    <section id="workspace-policy" class="workspace" aria-labelledby="policy-title" hidden>
+      <div class="ws-head">
+        <h2 id="policy-title" data-i18n="policy.title">模型策略</h2>
+        <p class="ws-lead" data-i18n="policy.lead">模型档案与任务路由均为版本化配置。</p>
+      </div>
+      <div id="policy-gate" class="gate-panel" hidden></div>
+      <div id="policy-body">
+        <div class="policy-toolbar">
+          <button type="button" class="btn btn-secondary" id="policy-refresh" data-i18n="policy.refresh">刷新</button>
+          <button type="button" class="btn btn-secondary" id="policy-save" data-i18n="policy.saveDraft">保存草稿</button>
+          <label class="ctl-field" for="policy-test-task">
+            <span class="ctl-label" data-i18n="policy.testTask">测试任务</span>
+            <select id="policy-test-task">
+              <option value="routine_compliance">routine_compliance</option>
+              <option value="complex_evidence_reasoning">complex_evidence_reasoning</option>
+              <option value="multimodal_extraction">multimodal_extraction</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn-secondary" id="policy-test" data-i18n="policy.mockTest">连通性测试</button>
+          <span class="toolbar-spacer"></span>
+          <button type="button" class="btn btn-danger" id="policy-publish" data-i18n="policy.publish">发布</button>
+          <button type="button" class="btn btn-danger" id="policy-rollback" data-i18n="policy.rollback">回滚</button>
+          <span class="loading" id="policy-loading" hidden aria-live="polite" data-i18n="policy.working">处理中…</span>
+        </div>
+        <p class="validation-msg" id="policy-messages" role="status"></p>
+        <p class="muted small" id="policy-test-result" role="status"></p>
+        <section class="policy-block">
+          <h3 data-i18n="policy.profiles">模型档案</h3>
+          <div class="table-wrap">
+            <table id="profiles-table" class="data-table">
+              <thead>
+                <tr>
+                  <th data-i18n="th.profile">档案</th><th data-i18n="th.provider">提供方</th>
+                  <th data-i18n="th.model">模型</th><th data-i18n="th.capabilities">能力</th>
+                  <th data-i18n="th.dataClasses">数据分级</th><th data-i18n="th.region">区域</th>
+                  <th data-i18n="th.credential">凭据</th>
+                  <th data-i18n="th.timeout">超时（毫秒）</th><th data-i18n="th.budget">令牌预算</th>
+                  <th data-i18n="th.enabled">状态</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="policy-block">
+          <h3 data-i18n="policy.routes">任务路由</h3>
+          <div class="table-wrap">
+            <table id="routes-table" class="data-table">
+              <thead>
+                <tr>
+                  <th data-i18n="th.task">任务</th><th data-i18n="th.primary">主用档案</th>
+                  <th data-i18n="th.fallback">备用档案</th><th data-i18n="th.requiredCaps">必需能力</th>
+                  <th data-i18n="th.regions">允许区域</th><th data-i18n="th.dataClasses">数据分级</th>
+                  <th data-i18n="th.routeVersion">路由版本</th>
+                  <th data-i18n="th.humanOnFailure">失败转人工</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+        <div class="policy-split">
+          <section class="policy-block">
+            <h3 data-i18n="policy.diff">发布差异</h3>
+            <pre id="policy-diff" class="diff-pane" data-i18n="policy.noDraft">暂无待发布草稿。</pre>
+          </section>
+          <section class="policy-block">
+            <h3 data-i18n="policy.history">版本历史</h3>
+            <ul id="policy-history" class="history-list"></ul>
+          </section>
+        </div>
+      </div>
+    </section>
+    <!-- ================= My records workspace ================= -->
+    <section id="workspace-records" class="workspace" aria-labelledby="records-title" hidden>
+      <div class="ws-head">
+        <h2 id="records-title" data-i18n="records.title">我的记录</h2>
+        <p class="ws-lead" data-i18n="records.lead">提交过的内容都在这里，可以查看结论、跟进进度，或基于原稿修订后重新提交。</p>
+      </div>
+      <div id="records-gate" class="gate-panel" hidden></div>
+      <div id="records-body">
+        <div class="records-toolbar">
+          <label class="ctl-field" for="records-filter">
+            <span class="ctl-label" data-i18n="records.filter">按结论筛选</span>
+            <select id="records-filter">
+              <option value="" data-i18n="records.filterAll">全部</option>
+              <option value="allow" data-i18n="decision.allow">可以提交</option>
+              <option value="needs_info" data-i18n="decision.needs_info">还差一点信息</option>
+              <option value="human_review" data-i18n="decision.human_review">需要专业同事看一眼</option>
+              <option value="blocked" data-i18n="decision.blocked">不能这样发出去</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn-secondary" id="records-refresh"
+                  data-i18n="records.refresh">刷新</button>
+        </div>
+        <div class="table-wrap">
+          <table id="records-table" class="data-table">
+            <thead>
+              <tr>
+                <th data-i18n="records.time">提交时间</th>
+                <th data-i18n="records.outcome">结论</th>
+                <th data-i18n="records.product">产品</th>
+                <th data-i18n="records.findings">涉及问题</th>
+                <th data-i18n="records.action">操作</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="muted small" id="records-empty" data-i18n="records.empty">还没有提交过记录。</p>
+        <div class="actions-row">
+          <button type="button" class="btn btn-ghost" id="records-more"
+                  data-i18n="records.more" hidden>加载更多</button>
+        </div>
+      </div>
+    </section>
+    <!-- ================= Quality & audit workspace ================= -->
+    <section id="workspace-governance" class="workspace" aria-labelledby="gov-title" hidden>
+      <div class="ws-head">
+        <h2 id="gov-title" data-i18n="gov.title">质量与审计</h2>
+        <p class="ws-lead" data-i18n="gov.lead">面向 QA、审计与法规事务的检查就绪视图。</p>
+      </div>
+      <div id="gov-gate" class="gate-panel" hidden></div>
+      <div id="gov-body">
+        <div class="gov-toolbar">
+          <button type="button" class="btn btn-secondary" id="gov-refresh"
+                  data-i18n="gov.refresh">刷新</button>
+          <span class="gov-stat" id="gov-stats"></span>
+        </div>
+        <!-- Whether the chain still verifies. Append-only is a promise about
+             this program; the chain is what makes an outside edit detectable. -->
+        <section class="policy-block">
+          <h3 data-i18n="gov.chainTitle">审计链完整性</h3>
+          <div class="chain-status" id="chain-status" aria-live="polite"></div>
+          <p class="hint" data-i18n="gov.chainHint">每条记录都带上一条记录的指纹；任何改动或删除都会断链并被指出位置。</p>
+        </section>
+        <section class="policy-block">
+          <h3 data-i18n="gov.oversightTitle">人工监督健康度</h3>
+          <div class="oversight-status" id="oversight-status" aria-live="polite"></div>
+          <p class="hint" data-i18n="gov.oversightHint">推翻率过低反而是预警信号：说明审核可能流于形式。</p>
+        </section>
+        <!-- Candidate regression cases awaiting a second person.
+             A candidate that needs confirming is useless if nobody can see the
+             queue: the feedback loop would collect entries and never close. -->
+        <section class="policy-block">
+          <h3 data-i18n="gov.candidatesTitle">待确认的回归用例</h3>
+          <p class="hint" data-i18n="gov.candidatesHint">由审核人标记的误报/漏报。需要另一位同事确认后才会进入黄金集，一个人无法单独改变发布门禁。</p>
+          <div class="candidate-summary" id="candidate-summary" aria-live="polite"></div>
+          <ul class="candidate-list" id="candidate-list"></ul>
+          <p class="muted small" id="candidate-empty" data-i18n="gov.candidatesEmpty">暂无待确认的候选用例。</p>
+        </section>
+        <section class="policy-block">
+          <h3 data-i18n="gov.integrity">数据完整性（ALCOA+）</h3>
+          <ul class="integrity-list" id="gov-integrity"></ul>
+        </section>
+        <section class="policy-block">
+          <h3 data-i18n="gov.connectorTitle">接口治理清单</h3>
+          <p class="hint" data-i18n="gov.connectorHint">全部为契约级模拟接口。</p>
+          <div class="table-wrap">
+            <table id="connector-table" class="data-table">
+              <thead>
+                <tr>
+                  <th data-i18n="rep.connector">来源系统</th><th data-i18n="th.vendor">供应商</th>
+                  <th data-i18n="th.interface">接口</th><th data-i18n="th.authMode">认证方式</th>
+                  <th data-i18n="th.residency">数据驻留地</th>
+                  <th data-i18n="th.classification">数据分级</th>
+                  <th data-i18n="th.validation">验证状态</th><th data-i18n="th.gxp">GxP 相关</th>
+                  <th data-i18n="th.sop">适用 SOP</th><th data-i18n="th.retention">保留期</th>
+                  <th data-i18n="th.writeCapable">可写回</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="policy-block">
+          <h3 data-i18n="gov.auditTitle">审计轨迹（追加写入）</h3>
+          <p class="hint" data-i18n="gov.auditHint">每条记录含执行主体、时间与状态迁移。</p>
+          <div class="table-wrap">
+            <table id="audit-table" class="data-table">
+              <thead>
+                <tr>
+                  <th data-i18n="th.time">时间</th><th data-i18n="th.event">事件</th>
+                  <th data-i18n="th.transition">状态迁移</th><th data-i18n="th.actor">执行主体</th>
+                  <th data-i18n="rev.case">案例</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="hint" data-i18n="gov.exportHint">导出需 audit_export 权限。</p>
+        </section>
+      </div>
+    </section>
+  </main>
+  <!-- First run only. Three things: what this does, what your role can do,
+       and one example to try. Dismissed permanently once acknowledged. -->
+  <div class="onboarding" id="onboarding" hidden role="dialog" aria-modal="true"
+       aria-labelledby="onboarding-title">
+    <div class="onboarding-card">
+      <h2 id="onboarding-title" data-i18n="onboarding.title">开始之前，三件事</h2>
+      <ol class="onboarding-list">
+        <li>
+          <strong data-i18n="onboarding.whatTitle">这个工具做什么</strong>
+          <p data-i18n="onboarding.whatBody">在拜访记录对外发出之前先检查一遍：涉及不良事件、个人信息、超说明书表述或合规红线时给出提示。原文完整保留，不会被删改。</p>
+        </li>
+        <li>
+          <strong data-i18n="onboarding.roleTitle">你的角色能做什么</strong>
+          <p id="onboarding-role" data-i18n="onboarding.roleBody">界面只显示你有权限的模块；每个操作在服务端还会再校验一次。</p>
+        </li>
+        <li>
+          <strong data-i18n="onboarding.tryTitle">试一条</strong>
+          <p data-i18n="onboarding.tryBody">在正文里写一句「患者服药后出现皮疹」，边写就会看到提示。</p>
+        </li>
+      </ol>
+      <div class="actions-row">
+        <button type="button" class="btn btn-primary" id="onboarding-close"
+                data-i18n="onboarding.start">开始使用</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+  </div>
+  <script src="/assets/i18n.js"></script>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+{
+  "ontology_version": "CN-IND-2026-01",
+  "notes": "Indication concepts with synonyms and one level of hierarchy. Deliberately small and local: the point is that prompt size stays constant as products grow, so this file is a retrieval problem, not a context problem.",
+  "concepts": [
+    {
+      "indication_id": "IND-100",
+      "canonical_name": "心血管疾病",
+      "synonyms": ["心血管病", "循环系统疾病", "cardiovascular disease"],
+      "parent_id": null,
+      "market": "CN",
+      "version": "CN-IND-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null,
+      "note": "broader category; matching this alone is never sufficient for an on-label conclusion"
+    },
+    {
+      "indication_id": "IND-001",
+      "canonical_name": "成人原发性高血压",
+      "synonyms": ["高血压", "原发性高血压", "血压高", "血压偏高", "essential hypertension", "hypertension"],
+      "parent_id": "IND-100",
+      "market": "CN",
+      "version": "CN-IND-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null
+    },
+    {
+      "indication_id": "IND-002",
+      "canonical_name": "2型糖尿病",
+      "synonyms": ["糖尿病", "二型糖尿病", "血糖高", "type 2 diabetes", "diabetes"],
+      "parent_id": null,
+      "market": "CN",
+      "version": "CN-IND-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null
+    },
+    {
+      "indication_id": "IND-003",
+      "canonical_name": "慢性心力衰竭",
+      "synonyms": ["心衰", "心力衰竭", "chronic heart failure", "heart failure"],
+      "parent_id": "IND-100",
+      "market": "CN",
+      "version": "CN-IND-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null
+    },
+    {
+      "indication_id": "IND-004",
+      "canonical_name": "高脂血症",
+      "synonyms": ["高血脂", "血脂高", "血脂异常", "hyperlipidemia"],
+      "parent_id": "IND-100",
+      "market": "CN",
+      "version": "CN-IND-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null
+    },
+    {
+      "indication_id": "IND-005",
+      "canonical_name": "偏头痛",
+      "synonyms": ["头痛发作", "migraine"],
+      "parent_id": null,
+      "market": "CN",
+      "version": "CN-IND-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null
+    },
+    {
+      "indication_id": "IND-006",
+      "canonical_name": "儿童原发性高血压",
+      "synonyms": ["儿童高血压", "小儿高血压", "paediatric hypertension"],
+      "parent_id": "IND-100",
+      "market": "CN",
+      "version": "CN-IND-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null,
+      "note": "separate concept from IND-001 on purpose: same disease, different population, and the label covers adults only"
+    },
+    {
+      "indication_id": "IND-007",
+      "canonical_name": "妊娠期高血压",
+      "synonyms": ["孕期高血压", "妊娠高血压", "gestational hypertension"],
+      "parent_id": "IND-100",
+      "market": "CN",
+      "version": "CN-IND-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null
+    },
+    {
+      "indication_id": "IND-008",
+      "canonical_name": "成人原发性高血压",
+      "synonyms": ["高血压", "原发性高血压"],
+      "parent_id": "IND-100",
+      "market": "US",
+      "version": "US-IND-2026-01",
+      "effective_from": "2026-01-01T00:00:00Z",
+      "effective_to": null,
+      "note": "same disease in another market; market filtering must keep these apart"
+    },
+    {
+      "indication_id": "IND-009",
+      "canonical_name": "成人原发性高血压",
+      "synonyms": ["高血压", "原发性高血压", "血压高"],
+      "parent_id": "IND-100",
+      "market": "CN",
+      "version": "CN-IND-2024-01",
+      "effective_from": "2024-01-01T00:00:00Z",
+      "effective_to": "2025-12-31T00:00:00Z",
+      "note": "retired ontology version; as_of filtering must exclude it for current cases"
+    }
+  ]
+}

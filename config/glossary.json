@@ -1,0 +1,533 @@
+{
+  "glossary_version": "2026-08-26",
+  "notes": "Single source of truth for user-facing vocabulary. The UI, the API and the tests all read this file, so a term cannot be explained one way in the interface and another way in a report. Chinese first because the primary users are China-based field representatives; English is kept for reviewers and auditors working in English.",
+  "locales": [
+    "zh-CN",
+    "en"
+  ],
+  "terms": {
+    "adverse_event": {
+      "zh-CN": {
+        "label": "不良事件（AE）",
+        "plain": "患者用药后出现的任何不舒服，不管是否确定跟药有关，都需要上报。",
+        "why_it_matters": "公司有法定义务收集并上报，漏报是合规事故。"
+      },
+      "en": {
+        "label": "Adverse event (AE)",
+        "plain": "Any unwanted experience a patient has after taking the product, whether or not it is known to be caused by it.",
+        "why_it_matters": "Collection and reporting are legal obligations; a missed report is a compliance failure."
+      }
+    },
+    "serious_adverse_event": {
+      "zh-CN": {
+        "label": "严重不良事件（SAE）",
+        "plain": "导致住院、危及生命、致残或死亡等严重后果的不良事件，上报时限更紧。",
+        "why_it_matters": "属于加速上报范围，时限以天计算。"
+      },
+      "en": {
+        "label": "Serious adverse event (SAE)",
+        "plain": "An adverse event that leads to hospitalisation, disability, a life-threatening situation, or death.",
+        "why_it_matters": "Falls under expedited reporting; the clock is counted in days."
+      }
+    },
+    "off_label": {
+      "zh-CN": {
+        "label": "超适应症（Off-label）",
+        "plain": "把药说成能治说明书里没批准的病、人群或用法。",
+        "why_it_matters": "推广未获批用法属于违规推广，公司和个人都可能被追责。"
+      },
+      "en": {
+        "label": "Off-label",
+        "plain": "Describing the product as treating a disease, population, or usage that the approved label does not cover.",
+        "why_it_matters": "Promoting unapproved use is a regulatory violation for both the company and the individual."
+      }
+    },
+    "pii": {
+      "zh-CN": {
+        "label": "个人敏感信息（PII）",
+        "plain": "能定位到具体某个人的信息，比如姓名、电话、病历号。",
+        "why_it_matters": "这类信息不能直接进入模型或外发，必须先替换成代号。"
+      },
+      "en": {
+        "label": "Personal identifiable information (PII)",
+        "plain": "Information that can point to one specific person, such as a name, phone number, or medical record number.",
+        "why_it_matters": "It must be replaced with a token before it reaches a model or leaves the system."
+      }
+    },
+    "phi": {
+      "zh-CN": {
+        "label": "健康相关个人信息（PHI）",
+        "plain": "与某个人健康状况相关、且能定位到这个人的信息。",
+        "why_it_matters": "敏感度高于一般个人信息，处理要求更严。"
+      },
+      "en": {
+        "label": "Protected health information (PHI)",
+        "plain": "Health information that can be linked back to one identifiable person.",
+        "why_it_matters": "More sensitive than ordinary personal data and handled under stricter rules."
+      }
+    },
+    "pseudonymisation": {
+      "zh-CN": {
+        "label": "假名化（脱敏）",
+        "plain": "把姓名替换成固定代号，代号与真名分开保管，需要授权才能还原。",
+        "why_it_matters": "同一个人始终对应同一个代号，既保护隐私又不影响分析。"
+      },
+      "en": {
+        "label": "Pseudonymisation",
+        "plain": "Replacing a name with a stable token, keeping the mapping separately and releasing it only to authorised roles.",
+        "why_it_matters": "One person keeps one token, so privacy is protected without losing analytical continuity."
+      }
+    },
+    "icsr": {
+      "zh-CN": {
+        "label": "个例安全报告（ICSR）",
+        "plain": "一份可上报的安全报告，需要「患者、报告人、可疑药品、不良反应」四要素齐全。",
+        "why_it_matters": "四要素缺一项就不构成有效报告，需要补齐后才能上报。"
+      },
+      "en": {
+        "label": "Individual case safety report (ICSR)",
+        "plain": "A reportable safety report, valid only when all four elements are present: patient, reporter, suspect product, and reaction.",
+        "why_it_matters": "Missing any one element means the report is not yet valid and follow-up is required."
+      }
+    },
+    "compliance_redline": {
+      "zh-CN": {
+        "label": "合规红线",
+        "plain": "绝对不能出现的行为描述，比如利益输送、不当对比。",
+        "why_it_matters": "属于零容忍范围，会被直接拦下。"
+      },
+      "en": {
+        "label": "Compliance redline",
+        "plain": "Conduct that is never acceptable, such as inducement or improper comparison.",
+        "why_it_matters": "Zero tolerance: content describing it is blocked outright."
+      }
+    },
+    "prompt_injection": {
+      "zh-CN": {
+        "label": "提示注入",
+        "plain": "内容里夹带了想指挥 AI 的话，比如「忽略之前的规则」。",
+        "why_it_matters": "系统只把内容当资料读，不当指令执行，但这种尝试会被记录。"
+      },
+      "en": {
+        "label": "Prompt injection",
+        "plain": "Text that tries to give the AI instructions, such as \"ignore the previous rules\".",
+        "why_it_matters": "Content is always read as data, never executed as instructions, and the attempt is recorded."
+      }
+    },
+    "evidence_pack": {
+      "zh-CN": {
+        "label": "证据包",
+        "plain": "系统为这次判断实际查到的资料清单，每条都有编号可以核对。",
+        "why_it_matters": "判断只能引用这里面的资料，不能凭印象下结论。"
+      },
+      "en": {
+        "label": "Evidence pack",
+        "plain": "The set of records the system actually retrieved for this assessment, each with a citable id.",
+        "why_it_matters": "Conclusions may only cite what is in the pack, never an unsupported recollection."
+      }
+    },
+    "audit_chain": {
+      "zh-CN": {
+        "label": "审计链",
+        "plain": "每条记录都带上一条记录的指纹，串成一条链。",
+        "why_it_matters": "任何人事后改动或删除记录都会断链，从而被发现。"
+      },
+      "en": {
+        "label": "Audit chain",
+        "plain": "Each record carries a fingerprint of the record before it, forming a chain.",
+        "why_it_matters": "Any later edit or deletion breaks the chain and therefore becomes detectable."
+      }
+    },
+    "human_review": {
+      "zh-CN": {
+        "label": "人工复核",
+        "plain": "交给药物警戒、医学或合规同事看一眼再决定。",
+        "why_it_matters": "内容会完整保留，只是发布前需要有资质的人确认。"
+      },
+      "en": {
+        "label": "Human review",
+        "plain": "A pharmacovigilance, medical, or compliance colleague looks at it before it proceeds.",
+        "why_it_matters": "The narrative is kept in full; only publication waits for a qualified person."
+      }
+    }
+  },
+  "finding_types": {
+    "potential_adverse_event": {
+      "term": "adverse_event",
+      "zh-CN": {
+        "title": "这段话提到了用药后的不舒服",
+        "why": "患者用药后的任何不适都属于不良事件，公司有义务上报。",
+        "what_to_do": "内容已完整保留，已转给药物警戒同事；如果知道发生时间和目前情况，请补充一句。"
+      },
+      "en": {
+        "title": "This mentions a reaction after taking the product",
+        "why": "Any unwanted experience after use counts as an adverse event, which the company must report.",
+        "what_to_do": "The narrative is kept in full and routed to pharmacovigilance; add the onset date and current status if you know them."
+      }
+    },
+    "serious_adverse_event": {
+      "term": "serious_adverse_event",
+      "zh-CN": {
+        "title": "这段话提到了严重后果",
+        "why": "住院、危及生命、致残或死亡属于严重不良事件，上报时限更紧。",
+        "what_to_do": "已按最高优先级转药物警戒，请尽快补充患者情况与发生时间。"
+      },
+      "en": {
+        "title": "This mentions a serious outcome",
+        "why": "Hospitalisation, a life-threatening situation, disability, or death is a serious adverse event with a tighter deadline.",
+        "what_to_do": "Routed to pharmacovigilance at the highest priority; please add patient status and onset time as soon as you can."
+      }
+    },
+    "off_label": {
+      "term": "off_label",
+      "zh-CN": {
+        "title": "这段话说的用法超出了说明书批准范围",
+        "why": "把药说成能治说明书没批准的病或人群，属于违规推广。",
+        "what_to_do": "请改成说明书批准的表述，或删掉这部分；需要保留的话要走医学与合规复核。"
+      },
+      "en": {
+        "title": "This describes a use beyond the approved label",
+        "why": "Presenting the product as treating an unapproved disease or population is promotional non-compliance.",
+        "what_to_do": "Reword to the approved wording or remove it; keeping it requires medical and compliance review."
+      }
+    },
+    "unapproved_promotion": {
+      "term": "off_label",
+      "zh-CN": {
+        "title": "这段话在推广未获批的内容",
+        "why": "推广没有获批的产品或用法是明确禁止的。",
+        "what_to_do": "这段不能这样发出去，请改写为获批表述后再提交。"
+      },
+      "en": {
+        "title": "This promotes something that is not approved",
+        "why": "Promoting an unlicensed product or usage is expressly prohibited.",
+        "what_to_do": "It cannot go out in this form; rewrite it using approved wording and resubmit."
+      }
+    },
+    "comparative_claim": {
+      "term": "compliance_redline",
+      "zh-CN": {
+        "title": "这段话把本品和别的治疗做了比较",
+        "why": "对比性说法需要有充分证据支持，否则属于不当宣传。",
+        "what_to_do": "请去掉比较性表述，或提供可引用的研究依据交医学复核。"
+      },
+      "en": {
+        "title": "This compares the product with another therapy",
+        "why": "A comparative claim needs solid supporting evidence, otherwise it is improper promotion.",
+        "what_to_do": "Remove the comparison, or supply a citable study for medical review."
+      }
+    },
+    "bribery_or_inducement": {
+      "term": "compliance_redline",
+      "zh-CN": {
+        "title": "这段话涉及利益输送",
+        "why": "宴请、礼品、回扣等描述属于合规红线，零容忍。",
+        "what_to_do": "这段不能发出去。如果是记录客户提出的要求，请如实描述并转合规处理。"
+      },
+      "en": {
+        "title": "This involves an improper benefit",
+        "why": "Hospitality, gifts, or rebates fall on a zero-tolerance redline.",
+        "what_to_do": "It cannot be submitted. If you are recording a request made to you, describe it factually and route it to compliance."
+      }
+    },
+    "pii": {
+      "term": "pii",
+      "zh-CN": {
+        "title": "这段话里有能认出具体某个人的信息",
+        "why": "姓名、电话这类信息不能直接进入模型，需要先替换成代号。",
+        "what_to_do": "系统已自动替换成代号，你不需要手动删；原文完整保留在记录里。"
+      },
+      "en": {
+        "title": "This contains information that identifies a specific person",
+        "why": "Names and phone numbers must be replaced with tokens before reaching a model.",
+        "what_to_do": "Already replaced automatically; nothing to delete by hand, and the original stays in the record."
+      }
+    },
+    "phi": {
+      "term": "phi",
+      "zh-CN": {
+        "title": "这段话里有健康相关的个人信息",
+        "why": "健康信息比一般个人信息更敏感，处理要求更严。",
+        "what_to_do": "系统已自动脱敏；如非必要，避免写入具体身份信息。"
+      },
+      "en": {
+        "title": "This contains health information about an identifiable person",
+        "why": "Health data is more sensitive than ordinary personal data and handled under stricter rules.",
+        "what_to_do": "Already masked automatically; avoid writing identifying details unless they are necessary."
+      }
+    },
+    "severe_pii_leak": {
+      "term": "pii",
+      "zh-CN": {
+        "title": "这段话里有大量个人身份信息",
+        "why": "集中出现的身份信息一旦外流影响很大，属于最高风险。",
+        "what_to_do": "已拦下并通知安全同事，请确认是否确实需要记录这些信息。"
+      },
+      "en": {
+        "title": "This contains a concentration of personal identifiers",
+        "why": "Identifiers appearing together carry the highest impact if they leak.",
+        "what_to_do": "Blocked and routed to security; please confirm whether these details need recording at all."
+      }
+    },
+    "prompt_injection": {
+      "term": "prompt_injection",
+      "zh-CN": {
+        "title": "这段话里有想指挥 AI 的指令",
+        "why": "系统只把内容当资料读，但这类尝试必须留痕。",
+        "what_to_do": "如果是客户原话，请照实记录并说明背景；已通知安全同事。"
+      },
+      "en": {
+        "title": "This contains text aimed at instructing the AI",
+        "why": "Content is only ever read as data, but such attempts must leave a trace.",
+        "what_to_do": "If a customer said it, record it verbatim with context; security has been notified."
+      }
+    },
+    "ambiguous_entity": {
+      "term": "pseudonymisation",
+      "zh-CN": {
+        "title": "分不清这里说的是哪一位",
+        "why": "同姓的两位医生出现在同一段话里，系统不敢猜，猜错会把观点安到别人头上。",
+        "what_to_do": "请补充说明分别是哪位医生，比如加上科室或全名。"
+      },
+      "en": {
+        "title": "It is unclear which person is meant",
+        "why": "Two people share a surname in one narrative; guessing would attribute one person's view to another.",
+        "what_to_do": "Clarify who is who, for example by adding the department or the full name."
+      }
+    },
+    "claim_discrepancy": {
+      "term": "off_label",
+      "zh-CN": {
+        "title": "你填的适应症和正文说的不一致",
+        "why": "表单填的和正文描述不同，可能是填错了，也可能漏掉了正文里的风险。",
+        "what_to_do": "请确认哪一个是准确的，然后修正后重新提交。"
+      },
+      "en": {
+        "title": "The indication you selected does not match the narrative",
+        "why": "The form and the text disagree, which may be a form error or a risk the form hides.",
+        "what_to_do": "Confirm which one is accurate, correct it, and resubmit."
+      }
+    },
+    "unresolved_indication": {
+      "term": "off_label",
+      "zh-CN": {
+        "title": "没认出这里说的是哪个适应症",
+        "why": "适应症库里没有匹配的说法，系统不猜，以免误判成超适应症。",
+        "what_to_do": "请用说明书里的适应症名称重写，或说明具体指的是哪种情况。"
+      },
+      "en": {
+        "title": "The indication could not be identified",
+        "why": "No matching concept was found, and guessing risks a wrong off-label conclusion.",
+        "what_to_do": "Use the indication name from the label, or state which condition you mean."
+      }
+    },
+    "evidence_conflict": {
+      "term": "evidence_pack",
+      "zh-CN": {
+        "title": "查到的资料互相矛盾",
+        "why": "不同版本的资料说法不一致，需要有资质的同事判断采用哪一个。",
+        "what_to_do": "已转医学复核，你不需要额外操作。"
+      },
+      "en": {
+        "title": "The retrieved records contradict each other",
+        "why": "Different versions disagree, so a qualified colleague decides which applies.",
+        "what_to_do": "Routed to medical review; nothing further is needed from you."
+      }
+    },
+    "expired_evidence": {
+      "term": "evidence_pack",
+      "zh-CN": {
+        "title": "引用的资料已经过期",
+        "why": "说明书或资料有版本有效期，过期版本不能作为依据。",
+        "what_to_do": "已转复核更新依据；如你手上有新版资料，请注明版本号。"
+      },
+      "en": {
+        "title": "The cited record is out of date",
+        "why": "Labels and reference records have validity periods; an expired version cannot support a claim.",
+        "what_to_do": "Routed for an updated reference; if you have the current version, note its number."
+      }
+    },
+    "missing_evidence": {
+      "term": "evidence_pack",
+      "zh-CN": {
+        "title": "没有找到支持这段话的资料",
+        "why": "没有依据就不能确认这段表述成立，系统不会替你假设。",
+        "what_to_do": "请补充产品、适应症或具体用法，让系统能查到对应资料。"
+      },
+      "en": {
+        "title": "No supporting record was found",
+        "why": "Without a reference the statement cannot be confirmed, and the system will not assume one.",
+        "what_to_do": "Add the product, indication, or specific usage so the right record can be retrieved."
+      }
+    },
+    "missing_context": {
+      "term": "evidence_pack",
+      "zh-CN": {
+        "title": "还差一些信息才能判断",
+        "why": "缺少内容或关键对象，系统无法完成判断。",
+        "what_to_do": "请补齐正文，或说明这次拜访涉及的对象与产品。"
+      },
+      "en": {
+        "title": "Some information is still missing",
+        "why": "Without the narrative or the key parties, the assessment cannot complete.",
+        "what_to_do": "Complete the text, or state which people and product this visit involved."
+      }
+    },
+    "permission_failure": {
+      "term": "human_review",
+      "zh-CN": {
+        "title": "当前角色没有这个操作权限",
+        "why": "该操作需要更高权限，系统不会因为界面点得到就放行。",
+        "what_to_do": "请联系有权限的同事处理，操作尝试已留痕。"
+      },
+      "en": {
+        "title": "Your role cannot perform this action",
+        "why": "The action needs a higher permission, and a visible control never implies authorisation.",
+        "what_to_do": "Ask an authorised colleague; the attempt has been recorded."
+      }
+    },
+    "irreversible_write": {
+      "term": "human_review",
+      "zh-CN": {
+        "title": "这是不可撤销的写入操作",
+        "why": "不可撤销的操作一旦出错无法回退，必须先经人工确认。",
+        "what_to_do": "已拦下等待授权确认。"
+      },
+      "en": {
+        "title": "This is an irreversible write",
+        "why": "An irreversible action cannot be undone if it is wrong, so it needs confirmation first.",
+        "what_to_do": "Held pending authorised confirmation."
+      }
+    },
+    "security_issue": {
+      "term": "prompt_injection",
+      "zh-CN": {
+        "title": "发现安全相关问题",
+        "why": "涉及系统安全边界的情况需要安全同事处理。",
+        "what_to_do": "已通知安全同事，内容已保留。"
+      },
+      "en": {
+        "title": "A security concern was detected",
+        "why": "Anything touching the system's trust boundary is handled by security.",
+        "what_to_do": "Security has been notified and the content is preserved."
+      }
+    },
+    "formatting": {
+      "term": "compliance_redline",
+      "zh-CN": {
+        "title": "格式建议",
+        "why": "不影响合规，只是让记录更清楚。",
+        "what_to_do": "可以按建议调整，也可以直接提交。"
+      },
+      "en": {
+        "title": "Formatting suggestion",
+        "why": "No compliance impact; it only makes the record clearer.",
+        "what_to_do": "Adjust if you like, or submit as is."
+      }
+    }
+  },
+  "decisions": {
+    "allow": {
+      "zh-CN": {
+        "label": "可以提交",
+        "plain": "没有发现需要处理的问题，正常保存。",
+        "next_step": "直接提交即可。"
+      },
+      "en": {
+        "label": "Ready to submit",
+        "plain": "Nothing was found that needs handling.",
+        "next_step": "Go ahead and submit."
+      }
+    },
+    "needs_info": {
+      "zh-CN": {
+        "label": "还差一点信息",
+        "plain": "有几项信息缺失，补齐后就能提交。",
+        "next_step": "按提示补充缺失项，然后重新检查。"
+      },
+      "en": {
+        "label": "A little more information needed",
+        "plain": "A few details are missing; once added this can be submitted.",
+        "next_step": "Fill in what is asked, then re-check."
+      }
+    },
+    "human_review": {
+      "zh-CN": {
+        "label": "需要专业同事看一眼",
+        "plain": "内容已完整保留并进入复核队列，不会丢。",
+        "next_step": "无需操作，有结论会通知你；也可以在「我的记录」里跟进。"
+      },
+      "en": {
+        "label": "A specialist colleague needs to look",
+        "plain": "The narrative is preserved in full and queued for review; nothing is lost.",
+        "next_step": "No action needed; you will be notified, and you can follow it in My records."
+      }
+    },
+    "blocked": {
+      "zh-CN": {
+        "label": "这段话不能这样发出去",
+        "plain": "命中了不能通过的红线内容。",
+        "next_step": "请看下面「怎么改」给出的说明；如果你认为判断有误，可以提出申诉。"
+      },
+      "en": {
+        "label": "This cannot go out as written",
+        "plain": "It matches content that cannot be released.",
+        "next_step": "See “How to fix it” below; if you believe this is wrong, you can appeal."
+      }
+    },
+    "refused": {
+      "zh-CN": {
+        "label": "无法处理这次请求",
+        "plain": "系统无法在安全前提下完成这次判断。",
+        "next_step": "内容已保留并转人工，请等待处理结果。"
+      },
+      "en": {
+        "label": "This request could not be processed",
+        "plain": "The assessment could not be completed safely.",
+        "next_step": "The content is preserved and routed to a person; please await the outcome."
+      }
+    }
+  },
+  "severities": {
+    "S0": {
+      "zh-CN": {
+        "label": "最高风险",
+        "plain": "必须立即处理，不能自行放行。"
+      },
+      "en": {
+        "label": "Highest risk",
+        "plain": "Must be handled immediately and never self-approved."
+      }
+    },
+    "S1": {
+      "zh-CN": {
+        "label": "高风险",
+        "plain": "需要有资质的同事确认。"
+      },
+      "en": {
+        "label": "High risk",
+        "plain": "Needs confirmation from a qualified colleague."
+      }
+    },
+    "S2": {
+      "zh-CN": {
+        "label": "中等风险",
+        "plain": "补齐信息或复核后可以继续。"
+      },
+      "en": {
+        "label": "Moderate risk",
+        "plain": "Can proceed once information is completed or reviewed."
+      }
+    },
+    "S3": {
+      "zh-CN": {
+        "label": "低风险",
+        "plain": "提示性质，不阻断。"
+      },
+      "en": {
+        "label": "Low risk",
+        "plain": "Advisory only; nothing is blocked."
+      }
+    }
+  }
+}

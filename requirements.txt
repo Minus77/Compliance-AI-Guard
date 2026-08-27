@@ -1,0 +1,29 @@
+# Compliance AI Guard —— 本地运行所需依赖（版本已锁定）
+#
+# 安装：python3 -m pip install -r requirements.txt
+#
+# 仅 4 个直接依赖，其余为它们的传递依赖，一并锁定以保证任何机器上装出的
+# 环境一致。全部为纯 Python 包，无需编译器。
+#
+# 说明：本应用默认离线运行（LLM_MODE=mock），不访问网络。httpx 仅被
+# FastAPI 的测试客户端使用，保留以便运行自检。
+
+# --- 直接依赖 ---
+fastapi==0.141.1
+uvicorn==0.52.4
+pydantic==2.13.4
+httpx==0.28.1
+
+# --- 传递依赖（由上面四个引入，锁定版本以保证可复现）---
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.14.2
+certifi==2026.7.22
+click==8.4.2
+h11==0.16.0
+httpcore==1.0.9
+idna==3.19
+pydantic_core==2.46.4
+starlette==1.6.0
+typing_extensions==4.16.0
+typing-inspection==0.4.4

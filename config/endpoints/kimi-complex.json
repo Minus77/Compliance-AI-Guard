@@ -1,0 +1,6 @@
+{
+  "_comment": "Complex evidence reasoning: a stronger model, longer timeout.",
+  "upstream_model": "claude-sonnet-4-5-20250929",
+  "timeout_ms": 25000,
+  "max_output_tokens": 4096
+}

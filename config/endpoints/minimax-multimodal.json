@@ -1,0 +1,6 @@
+{
+  "_comment": "Multimodal extraction route. Vision-capable upstream model.",
+  "upstream_model": "claude-sonnet-4-5-20250929",
+  "timeout_ms": 25000,
+  "max_output_tokens": 4096
+}

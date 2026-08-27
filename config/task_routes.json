@@ -1,0 +1,35 @@
+{
+  "multimodal_extraction": {
+    "task_type": "multimodal_extraction",
+    "primary_profile_id": "minimax-multimodal",
+    "fallback_profile_ids": [],
+    "required_capabilities": ["vision", "text"],
+    "allowed_regions": ["CN"],
+    "allowed_data_classes": ["pii_tokenized", "phi_tokenized"],
+    "max_attempts": 1,
+    "requires_human_on_failure": true,
+    "route_version": "routes-v1"
+  },
+  "routine_compliance": {
+    "task_type": "routine_compliance",
+    "primary_profile_id": "deepseek-routine",
+    "fallback_profile_ids": ["kimi-complex"],
+    "required_capabilities": ["text"],
+    "allowed_regions": ["CN"],
+    "allowed_data_classes": ["pii_tokenized", "confidential", "internal", "public"],
+    "max_attempts": 1,
+    "requires_human_on_failure": true,
+    "route_version": "routes-v1"
+  },
+  "complex_evidence_reasoning": {
+    "task_type": "complex_evidence_reasoning",
+    "primary_profile_id": "kimi-complex",
+    "fallback_profile_ids": [],
+    "required_capabilities": ["text"],
+    "allowed_regions": ["CN"],
+    "allowed_data_classes": ["internal", "confidential", "pii_tokenized"],
+    "max_attempts": 1,
+    "requires_human_on_failure": true,
+    "route_version": "routes-v1"
+  }
+}
