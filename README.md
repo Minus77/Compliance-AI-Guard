@@ -1,5 +1,7 @@
 # Compliance AI Guard
 
+**English** · [简体中文](README.zh.md)
+
 A deterministic, fail-safe compliance pre-check for pharmaceutical field
 communications. It sits in front of a call-report narrative and decides — before
 anything is released — whether the content can be allowed, needs more information,
@@ -109,11 +111,11 @@ block.
 ## Verification
 
 ```text
-python -m pytest -q                                          # 1029 tests, offline
+python -m pytest -q                                          # 1068 tests, offline
 python tests/evaluation/run_eval.py --mode mock --output artifacts/eval-report.json
 ```
 
-Current state: **1029 passing**, golden set **44/44 matched**, **0** dangerous false
+Current state: **1068 passing**, golden set **44/44 matched**, **0** dangerous false
 allows, all **15 release gates** pass.
 
 The gates are deliberately asymmetric where symmetry would hide something. Masking
@@ -148,14 +150,17 @@ approval.
 
 ## Documentation
 
-| Document | Contents |
-| --- | --- |
-| [docs/architecture.md](docs/architecture.md) | The workflow-first decision, containers, request path, state machine, policy rules, off-label and masking design, routing, layout |
-| [docs/operations.md](docs/operations.md) | Running it, the six-case walkthrough, roles and workspaces, model policy publish/rollback, live mode, failure playbooks, retention |
-| [docs/security-and-risk.md](docs/security-and-risk.md) | Trust boundaries, 17-risk register with implemented controls, injection defence, PV assessment, signatures, oversight, scope limits |
-| [docs/validation.md](docs/validation.md) | Test strata, golden set, the 15 release gates and why their thresholds differ, latency, the seven defects only a live model exposed |
-| [docs/integration-contracts.md](docs/integration-contracts.md) | Source-of-record, content vault, and PV adapter contracts; approval-gated writes; idempotency and DLQ semantics |
-| [docs/decisions/0001-workflow-first-controlled-agent.md](docs/decisions/0001-workflow-first-controlled-agent.md) | The architecture decision record |
+Every document is available in English and Simplified Chinese. Both versions are
+maintained from the same code, not machine-translated at build time.
+
+| Document | 中文 | Contents |
+| --- | --- | --- |
+| [architecture.md](docs/architecture.md) | [架构设计](docs/zh/architecture.md) | The workflow-first decision, containers, request path, state machine, policy rules, off-label and masking design, routing, layout |
+| [operations.md](docs/operations.md) | [运维手册](docs/zh/operations.md) | Running it, the six-case walkthrough, roles and workspaces, model policy publish/rollback, live mode, failure playbooks, retention |
+| [security-and-risk.md](docs/security-and-risk.md) | [安全与风险](docs/zh/security-and-risk.md) | Trust boundaries, 17-risk register with implemented controls, injection defence, PV assessment, signatures, oversight, scope limits |
+| [validation.md](docs/validation.md) | [验证](docs/zh/validation.md) | Test strata, golden set, the 15 release gates and why their thresholds differ, latency, the seven defects only a live model exposed |
+| [integration-contracts.md](docs/integration-contracts.md) | [集成契约](docs/zh/integration-contracts.md) | Source-of-record, content vault, and PV adapter contracts; approval-gated writes; idempotency and DLQ semantics |
+| [decisions/0001](docs/decisions/0001-workflow-first-controlled-agent.md) | [决策记录 0001](docs/zh/decisions/0001-workflow-first-controlled-agent.md) | The architecture decision record |
 
 ## Stack
 

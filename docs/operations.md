@@ -1,5 +1,7 @@
 # Operations
 
+**English** · [简体中文](zh/operations.md)
+
 Running the app, the demo walkthrough, live-model mode, failure playbooks, and
 retention. Written against the implemented code.
 

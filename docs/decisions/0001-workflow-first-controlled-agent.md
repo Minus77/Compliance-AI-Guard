@@ -1,5 +1,7 @@
 # 1. Workflow-first controlled agent
 
+**English** · [简体中文](../zh/decisions/0001-workflow-first-controlled-agent.md)
+
 Date: 2026-08-20
 
 ## Status

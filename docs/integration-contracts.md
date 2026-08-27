@@ -1,5 +1,7 @@
 # Integration Contracts
 
+**English** · [简体中文](zh/integration-contracts.md)
+
 The adapter boundary between this system and the external systems a pharma
 deployment would involve: a CRM/call-report source, an approved-content vault, and
 a safety (PV) system.

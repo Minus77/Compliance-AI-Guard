@@ -1,5 +1,7 @@
 # Security and Risk
 
+**English** · [简体中文](zh/security-and-risk.md)
+
 Trust boundaries, the AI risk register, and the control that mitigates each risk.
 Every control listed here is implemented and covered by a test.
 

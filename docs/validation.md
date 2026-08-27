@@ -1,11 +1,13 @@
 # Validation
 
+**English** · [简体中文](zh/validation.md)
+
 How the system is measured: test strata, the golden set, the 15 release gates, and
 the defects that only a real model exposed.
 
 ## 1. Test strata
 
-1029 tests, all offline in `LLM_MODE=mock`.
+1068 tests, all offline in `LLM_MODE=mock`.
 
 | Stratum | Location | Verifies |
 | --- | --- | --- |

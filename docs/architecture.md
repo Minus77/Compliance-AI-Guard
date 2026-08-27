@@ -1,5 +1,7 @@
 # Architecture
 
+**English** · [简体中文](zh/architecture.md)
+
 ## 1. The core decision: workflow-first, model-as-candidate
 
 The model never decides. It reads Chinese free text and returns structured
