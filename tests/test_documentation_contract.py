@@ -261,6 +261,51 @@ def test_scope_limits_are_stated_in_both_readmes():
     assert "合成" in chinese
 
 
+@pytest.mark.parametrize("relative_path", ["README.md", "README.zh.md"])
+def test_readmes_describe_the_shared_public_entries(relative_path):
+    text = (_PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
+
+    for required in (
+        "/api/checks",
+        "/api/conversations/guard-input",
+    ):
+        assert required in text, f"{relative_path} does not document {required}"
+
+
+@pytest.mark.parametrize("relative_path", ["README.md", "README.zh.md"])
+def test_readmes_describe_the_three_ai_stages(relative_path):
+    text = (_PROJECT_ROOT / relative_path).read_text(encoding="utf-8").casefold()
+
+    for stage in ("input", "generation", "output"):
+        assert stage in text, f"{relative_path} does not document the {stage} stage"
+
+
+@pytest.mark.parametrize("relative_path", ["README.md", "README.zh.md"])
+def test_readmes_list_the_seven_workspaces(relative_path):
+    text = (_PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
+
+    for workspace in (
+        "overview",
+        "content_check",
+        "conversation_guard",
+        "reviews",
+        "rules",
+        "quality_audit",
+        "settings",
+    ):
+        assert f"`{workspace}`" in text, (
+            f"{relative_path} does not list the {workspace} workspace"
+        )
+
+
+def test_readme_does_not_use_unverified_or_stale_scope_language():
+    english = (_PROJECT_ROOT / "README.md").read_text(encoding="utf-8").casefold()
+    chinese = (_PROJECT_ROOT / "README.zh.md").read_text(encoding="utf-8")
+
+    assert "certified" not in english
+    assert "参考" not in chinese
+
+
 def test_repository_has_no_vendor_or_fixed_external_workflow_coupling():
     """Product code, fixtures and docs use generic domain names throughout."""
     forbidden = (

@@ -2,243 +2,314 @@
 
 [English](../architecture.md) · **简体中文**
 
-## 1. 核心决策：Workflow-first，模型只产出候选
+## 1. 产品边界
 
-**模型不做决定。** 它读懂中文自由文本并返回结构化候选；服务端做决定。
+Compliance AI Guard 是面向医疗内容与 AI 对话的独立控制服务。它可以直接接收
+内容，也可以通过可选的供应商中立连接器接入。运行不依赖特定客户系统、业务
+对象模型、供应商 SDK、数据库、消息队列、身份提供商或在线模型。
 
-一切带有后果的东西——决定、严重度、审核路由、批准状态、工具权限——都由确定性策略引擎和代码控制的状态机产出。这个切分就是整套设计，也正因如此，一个案例可以被回放、被审计、被解释清楚，而不需要去问模型"你当时在想什么"。
+两个公共入口共享一个控制面：
+
+- `POST /api/checks`：在保存、发送或发布前检查文本。
+- `POST /api/conversations/guard-input`：在生成会话存在前检查不可信 AI 输入。
+
+内容路径与对话路径共享规则包、策略引擎、finding 结构、复核队列、规则生命周期
+和审计链。因此一次规则更新不会让同一风险在两个入口得到两种含义。
+
+## 2. 核心决策：工作流优先，模型只产出候选
+
+模型可以理解语言、抽取结构化字段、提出 finding 和起草回复，但不能设置最终
+处置、严重度、批准状态、复核路由、发布权限或工具权限。
 
 | 关注点 | 归属 | 理由 |
 | --- | --- | --- |
-| 理解中文叙述、抽取标签字段 | 模型 | 语言模型擅长的任务 |
-| 决定、严重度、路由、权限 | 策略引擎（代码） | 必须可复现、可审查 |
-| 状态流转、失败处理 | 状态机（代码） | 必须永不失效开放（fail-open） |
-| 证据可采性、版本控制 | 检索层（代码） | 必须版本受控、可过滤 |
+| 语言理解与有界抽取 | 模型候选层 | 合理使用概率能力 |
+| 处置、严重度、路由、权限 | 确定性策略引擎 | 可复现、可审查 |
+| 输入、生成、输出状态流转 | 服务端工作流代码 | 不允许失效开放 |
+| 证据可采性与版本 | 检索层 | 必须过滤并可回放 |
+| 人工复核后的发布 | 复核与审计服务 | 必须可归属 |
 
-被否掉的替代方案是：让自主 Agent 自行决定步骤、工具和放行结论。在合规链路里，**步骤序列本身就是控制措施**，而开放式循环无法验证、无法回放、也无法向审核人解释。参见 [decisions/0001-workflow-first-controlled-agent.md](decisions/0001-workflow-first-controlled-agent.md)。
+被否定的替代方案是让自主循环选择工具和最终发布结论。在合规链路里，控制步骤
+的顺序本身就是控制措施。参见
+[decisions/0001-workflow-first-controlled-agent.md](decisions/0001-workflow-first-controlled-agent.md)。
 
-## 2. 系统上下文
+## 3. 系统上下文
 
 ```mermaid
 graph LR
-    REP["业务代表"] -->|提交拜访记录| GUARD["Compliance AI Guard"]
-    REV["专业审核人<br/>医学 / PV / 合规 / 法务 / 安全"] -->|审核并签署决定| GUARD
-    ADM["平台 / AI 管理员"] -->|模型策略发布与回滚| GUARD
-    GUARD -->|按 record_id 回读；仅在审批后写回| SRC["源系统<br/>CRM / 内容库 / PV"]
-    GUARD -->|脱敏文本，受控 HTTPS| PROVIDER["批准的模型供应商"]
+    AUTHOR["内容作者或 AI 用户"] --> GUARD["Compliance AI Guard"]
+    REV["专业审核人<br/>医学 / 安全 / 法务 / 合规"] --> GUARD
+    ADM["合规管理员"] --> GUARD
+    GUARD -. 可选 .-> SRC["内容源连接器"]
+    GUARD -. 可选 .-> SAFE["安全接收连接器"]
+    GUARD -. 可选 .-> EXPORT["复核导出连接器"]
+    GUARD -->|脱敏且受约束的请求| MODEL["已配置模型供应商"]
 ```
 
-源系统与 PV 边界均以**仅契约适配器**实现。它们演练了真实集成所需的各项不变量（回读、版本拒绝、审批门控写入、幂等），但不接触任何真实系统。详见 [integration-contracts.md](integration-contracts.md)。
+虚线表示契约，不是必需服务。独立模式完全在本地运行。每个可选连接器都会声明
+数据分级、允许动作、版本行为和健康状态。参见
+[integration-contracts.md](integration-contracts.md)。
 
-## 3. 容器视图
+## 4. 容器视图
 
 ```mermaid
 graph TD
-    UI["单页 Web 界面<br/>四个工作区，中 / 英"] --> API["API / 入口<br/>FastAPI"]
-    API --> ORCH["工作流编排器<br/>状态机 + 步骤序列"]
-    ORCH --> SEC["安全网关<br/>实体消解、打码、注入扫描、DLP"]
-    ORCH --> KNW["知识与检索<br/>标签事实、证据包、版本门控"]
-    ORCH --> GW["模型网关<br/>任务路由、超时、回退"]
-    GW --> VAL["Schema 校验器<br/>Pydantic v2"]
-    VAL --> POL["策略引擎<br/>规则、严重度、路由、门禁"]
-    POL --> RVW["审核服务<br/>队列、签署决定、生命周期"]
-    ORCH --> AUD["审计与遥测<br/>哈希链账本、Trace、指标"]
-    CFG["控制平面注册表<br/>Profile、路由、策略、提示词"] --> GW
-    CFG --> POL
-    ADPT["集成适配器<br/>源注册表、PV、幂等事件总线"] --> ORCH
+    UI["单页 Web 界面<br/>七个工作区，中 / 英"] --> API["FastAPI API"]
+    API --> CHECK["内容检查服务"]
+    API --> CONV["对话防护服务"]
+    CHECK --> PRE["确定性预检"]
+    CHECK --> SEC["实体消解 + 打码 + 注入扫描"]
+    CONV --> CHECK
+    CONV --> SESSION["绑定用户与租户的会话"]
+    CHECK --> KNW["版本化证据检索"]
+    CONV --> GW["模型网关"]
+    GW --> VAL["Schema 校验"]
+    GW --> OUT["完整缓冲输出"]
+    OUT --> CHECK
+    VAL --> POL["确定性策略引擎"]
+    CHECK --> POL
+    POL --> REVIEW["复核与规则生命周期"]
+    CHECK --> AUDIT["哈希链审计"]
+    CONV --> AUDIT
 ```
 
-注意模型周围箭头的方向：网关把候选返回给**校验器**，校验器再把已校验的候选交给**策略引擎**。**模型没有任何一条指向决定的边。**
+模型网关没有指向发布权限的边。候选输出经过 Schema 校验和服务端策略判断；
+对话输出必须再次经过同一内容检查路径，才能显示。
 
-## 4. 请求路径
+## 5. 内容检查路径
 
 ```mermaid
 sequenceDiagram
-    participant U as 业务代表
+    participant U as 作者
     participant API as API
-    participant ORC as 编排器
     participant SEC as 安全网关
-    participant RTR as 检索
-    participant GW as 模型网关
-    participant POL as 策略引擎
-    participant RVW as 审核服务
-    participant AUD as 审计
+    participant K as 版本化知识
+    participant M as 模型候选层
+    participant P as 策略引擎
+    participant R as 复核与审计
 
-    U->>API: 提交叙述（+ 结构化声明）
-    API->>ORC: 创建案例
-    ORC->>SEC: 鉴权、实体消解、打码、注入扫描
-    SEC-->>ORC: 脱敏文本 + 安全 finding
-    ORC->>ORC: 任务分类（常规 / 复杂 / 多模态）
-    ORC->>RTR: 闭世界证据检索
-    RTR-->>ORC: 证据包 + snapshot id
-    ORC->>GW: 模型调用（仅候选）
-    GW-->>ORC: 原始候选 JSON
-    ORC->>POL: 服务端策略判定
-    POL-->>ORC: 决定 / 严重度 / 路由
-    ORC->>RVW: 按所需角色创建审核任务
-    ORC->>AUD: 追加审计事件与 trace span
-    API-->>U: 脱敏且带解释的结果
+    U->>API: POST /api/checks
+    API->>SEC: 鉴权、实体消解、打码、扫描
+    SEC-->>API: 安全文本 + 安全 finding
+    API->>K: 封闭世界证据检索
+    K-->>API: 证据包 + 快照版本
+    API->>M: 有界抽取请求
+    M-->>API: 候选 JSON
+    API->>P: 校验并评估候选
+    P-->>API: 处置、严重度、片段、路由
+    API->>R: 创建复核工作 + 审计事件
+    API-->>U: 安全结果 + 检查版本
 ```
 
-有两个顺序是承重的。**实体消解在打码之前**，所以一个人对应一个 token。**注入扫描在模型调用之前**，所以恶意指令根本到不了模型。
+编辑期间的 `POST /api/checks/precheck` 路径更短：只做脱敏后的确定性检查，
+不创建案例，也不调用模型。
 
-## 5. 状态与失败路径
+有两个顺序不能交换：
+
+1. 实体消解先于打码，使一个人得到同一个 token。
+2. 提示注入扫描先于模型访问。
+
+## 6. AI 对话：输入、生成、输出
 
 ```mermaid
-stateDiagram-v2
-    [*] --> RECEIVED
-    RECEIVED --> PREPROCESSED: 鉴权 + 消解 + 打码 + 扫描
-    PREPROCESSED --> CLASSIFIED: 任务分类
-    CLASSIFIED --> EVIDENCE_READY: 检索
-    EVIDENCE_READY --> EVALUATED: 模型候选
-    EVALUATED --> VALIDATED: Schema + 证据校验
-    VALIDATED --> DECISIONED: 策略判定
-    DECISIONED --> ALLOWED: allow
-    DECISIONED --> NEEDS_INFO: needs_info
-    DECISIONED --> HUMAN_REVIEW: human_review
-    DECISIONED --> BLOCKED: blocked
-    EVALUATED --> MANUAL_DEGRADED: 模型失败
-    EVALUATED --> FAILED_RETRYABLE: 瞬时失败
-    FAILED_RETRYABLE --> MANUAL_DEGRADED: 重试耗尽
-    MANUAL_DEGRADED --> HUMAN_REVIEW: 人工接管
-    VALIDATED --> FAILED_SAFE: 未处理的异常
-    ALLOWED --> COMPLETED: 审计
-    NEEDS_INFO --> COMPLETED: 审计
-    HUMAN_REVIEW --> COMPLETED: 审计
-    BLOCKED --> COMPLETED: 审计
+sequenceDiagram
+    participant U as 用户
+    participant API as API
+    participant G as 输入检查
+    participant S as 服务端会话
+    participant M as 模型网关
+    participant O as 输出检查
+
+    U->>API: POST /api/conversations/guard-input
+    API->>G: 鉴权并检查输入
+    alt blocked
+        G-->>API: 停止，无会话，无模型调用
+        API-->>U: 安全说明
+    else 允许或可复核
+        G->>S: 安全文本 + 原文哈希 + 规则版本 + 失效时间
+        S-->>API: conversation_id
+        API-->>U: 会话与待复核风险
+        U->>API: POST /api/conversations/{id}/generate
+        API->>S: 核对主体、租户、提示词哈希、规则版本、有效期
+        API->>M: 基于服务端保存输入的受约束请求
+        M-->>O: 完整缓冲候选
+        O->>O: 共享规则 + 输出专用规则
+        alt 输出允许
+            O-->>API: 已发布安全文本
+        else 输出阻断或异常
+            O-->>API: 仅撤销 / 安全失败
+        end
+    end
 ```
 
-**不变量：案例永远不可能从失败或降级状态到达 `ALLOWED`。** 所有已配置路由都带 `requires_human_on_failure: true`，因此每一类模型失败——超时、Schema 违规、连接错误——都会落到 `MANUAL_DEGRADED` 并生成人工审核任务，绝不会变成静默放行。
+生成请求必须携带已经检查的同一份文本。哈希不一致返回
+`conversation_prompt_mismatch`；规则版本变化返回
+`conversation_requires_recheck`；会话过期或关闭返回 `conversation_expired`。
+这些检查阻止客户端把旧的成功标志变成对新提示词的授权。
 
-`FAILED_SAFE` 由未处理的异常和显式失效安全事件到达。如果某条路由关闭了 `requires_human_on_failure`，那么 `audit`/`permission`/`policy`/`schema` 类别的模型失败也会走到这里——这个降级阶梯是真实实现的，不只是文档描述。
+回复完整缓冲后才检查。被阻断输出不回显正文，只返回安全的 finding 与状态。
+生成或输出检查异常时进入 `failed_safe`，不发布任何文本。
 
-## 6. 决定与严重度
+## 7. 处置、严重度与动作
 
-四种决定：`allow`、`needs_info`、`human_review`、`blocked`（外加用于不安全错误的 `refused`）。
+公共处置为 `allow`、`needs_info`、`human_review`、`blocked`。`refused` 是
+无法安全处理的请求所使用的内部终态。
 
 | 严重度 | 含义 |
 | --- | --- |
-| **S0** | 红线。严重不良事件、数据泄露、注入：立即拦截或升级，永不允许自我批准 |
-| **S1** | 高风险。需要专业审核（PV / 医学 / 合规 / 安全） |
-| **S2** | 需补信息。证据或上下文不足；补齐后重跑 |
-| **S3** | 低风险。仅措辞或格式建议 |
+| **S0** | 红线。需要立即升级或阻断的安全条件 |
+| **S1** | 高风险，需要专业复核 |
+| **S2** | 缺少信息或上下文，补齐后重跑 |
+| **S3** | 低风险措辞或格式提示 |
 
-S0 与 S1 不可自我批准；审核界面对这两级禁用"接受"选项。
+每个 finding 带有 `allow_save`、`allow_generate`、`allow_publish`。输入只有在
+未被阻断且所有 finding 都允许生成时才能建立会话。输出只在总处置为 `allow`
+且所有 finding 都允许发布时显示。S0 与 S1 不允许自我批准。
 
-## 7. 策略规则
+## 8. 共享策略规则
 
-`config/policies/general-medical-demo.json` 中共 21 条规则，版本号 `GENERAL-MEDICAL-2026-01`。每条携带模式、严重度、决定、所需角色、SLA，以及是否可接受证据缺口。
+默认规则包为 `config/policies/general-medical-demo.json`，版本
+`GENERAL-MEDICAL-2026-01`，共 21 条规则。规则携带内容类型、入口范围、
+模式或推导条件、严重度、处置、所需角色、SLA、整改建议、证据要求和片段要求。
 
 | 规则 | Finding | 严重度 | 决定 | 路由至 | SLA |
 | --- | --- | --- | --- | --- | --- |
-| CN-001 | `potential_adverse_event` | S1 | human_review | PV + 医学 | 8h |
-| CN-002 | `serious_adverse_event` | S0 | human_review | PV + 医学 | 4h |
+| CN-001 | `potential_adverse_event` | S1 | human_review | 安全 + 医学 | 8h |
+| CN-002 | `serious_adverse_event` | S0 | human_review | 安全 + 医学 | 4h |
 | CN-003 | `bribery_or_inducement` | S1 | blocked | 合规 + 法务 | 8h |
 | CN-004 | `comparative_claim` | S1 | human_review | 合规 + 医学 | 8h |
-| CN-005 | `prompt_injection` | S0 | blocked | 安全 | 立即 |
-| CN-006 | `pii` | S1 | human_review | 安全 | 8h |
-| CN-007 | `phi` | S1 | human_review | 安全 | 8h |
-| CN-008 | `severe_pii_leak` | S0 | blocked | 安全 | 立即 |
+| CN-005 | `prompt_injection` | S0 | blocked | 合规管理员 | 立即 |
+| CN-006 | `pii` | S1 | human_review | 合规管理员 | 8h |
+| CN-007 | `phi` | S1 | human_review | 合规管理员 | 8h |
+| CN-008 | `severe_pii_leak` | S0 | blocked | 合规管理员 | 立即 |
 | CN-009 | `off_label` | S1 | human_review | 合规 + 医学 | 8h |
 | CN-010 | `evidence_conflict` | S1 | human_review | 合规 + 医学 | 8h |
-| CN-011 | `expired_evidence` | S1 | human_review | 代表 + 医学 | 24h |
-| CN-012 | `missing_evidence` | S2 | needs_info | 代表 + 医学 | 24h |
+| CN-011 | `expired_evidence` | S1 | human_review | 提交人 + 医学 | 24h |
+| CN-012 | `missing_evidence` | S2 | needs_info | 提交人 + 医学 | 24h |
 | CN-013 | `missing_context` | S2 | needs_info | 审核人 | 24h |
-| CN-014 | `permission_failure` | S1 | blocked | 安全 | 8h |
-| CN-015 | `irreversible_write` | S0 | blocked | 管理员 | 立即 |
-| CN-016 | `security_issue` | S1 | blocked | 安全 | 8h |
+| CN-014 | `permission_failure` | S1 | blocked | 合规管理员 | 8h |
+| CN-015 | `irreversible_write` | S0 | blocked | 合规管理员 | 立即 |
+| CN-016 | `security_issue` | S1 | blocked | 合规管理员 | 8h |
 | CN-017 | `unapproved_promotion` | S0 | blocked | 合规 + 法务 | 4h |
 | CN-018 | `formatting` | S3 | allow | 审核人 | 72h |
 | CN-019 | `ambiguous_entity` | S2 | needs_info | 审核人 | 24h |
 | CN-020 | `claim_discrepancy` | S1 | human_review | 合规 + 医学 | 8h |
 | CN-021 | `unresolved_indication` | S2 | needs_info | 医学 | 24h |
 
-超过 `effective_until` 的策略包会在启动时被拒绝，而不是被放任继续判定案例。
+超出有效期的规则包会在启动时被拒绝。规则以不可变版本完成起草、测试、评估、
+发布和回滚。历史结果保留产生它的策略版本。
 
-## 8. 超适应症检测：字段比对，而非模型意见
+## 9. 内容模型与片段
 
-问模型"这是超适应症吗"会在三个地方失败：完整中文说明书有数万字，塞不进请求预算；无关的说明书叙述（例如安慰剂组副作用）会污染判断；而得到的答案无法与任何东西核对。
+检查请求携带 `tenant_id`、`content_type`、可选细分类型、市场、语言、可选产品
+与治疗领域、正文或内容分段、可选结构化字段、请求规则版本、留存策略、外部
+关联 ID 和客户端内容版本。
 
-因此工作被切分为：
+`content_type` 使用通用值：客户互动记录、医学信息请求、医学事务记录、推广内容、
+AI 对话或其他。外部关联 ID 只用于调用方关联，不参与策略判定。
 
-1. **说明书在接入阶段就结构化**，而非运行时读全文——按产品、市场、语言、版本存储为标签事实（`knowledge/label_facts.py`）。
-2. **模型只抽取七个固定字段**：适应症、人群、治疗线数、剂量、给药途径、疗程、联合用药。**从不要求它给出结论。**
-3. **服务端逐字段比对**（`compare_label_fields`）。适应症优先按概念 id 匹配，只有在没有 id 时才回退到文本比对，因此"高血压"与"原发性高血压"不会造成误判。
-4. **不一致触发 CN-009**（S1），并把具体失败字段记为 `label_field:<字段名>`，审核人能看到是哪次比对失败。
-5. **检索是闭世界的**——按租户、市场、产品、语言、状态、有效期、访问范围过滤。检索不到就是证据缺口（CN-012，`needs_info`），**绝不是放行**。
+Finding 使用相对于本次精确提交版本的 Unicode 字符偏移。客户端文本哈希与服务端
+结果版本不一致时，片段标记为失效，界面要求重新检查。规则无法可靠提供片段时，
+保留 finding 并让片段为空；系统不会搜索相似文本，再把猜测位置当作证据。
 
-本地适应症本体把口语化表述（"血压高"）映射到概念 id，因此送到模型的是单个产品的结构化事实，而不是说明书原文。**请求体积与产品目录规模由此解耦。**
+## 10. 证据与超适应症比对
 
-## 9. 保留语义的打码
+完整产品标签不作为请求载荷发送。标签在接入阶段结构化为版本化事实。模型可以
+抽取适应症、人群、治疗线数、剂量、给药途径、疗程和联合用药作为候选。服务端
+逐字段与证据快照比对。
 
-打码有两种失败模式，而危险的那个并不是显而易见的那个。
+适应症优先按概念 ID 匹配，只有在没有 ID 时才回退到文本。不一致时记录具体
+`label_field:<字段名>` 并产生 CN-009。检索按租户、市场、产品、语言、状态、
+有效期与访问范围过滤。没有证据得到 CN-012，永远不会放行。
 
-**打码不足**会泄露标识符。**打码过度**会删掉叙述——这才是隐蔽的失败：早期基于正则的实现会替换整个匹配段，于是"赠送礼品给医生"丢掉了承载"礼品"的字符，商业红线规则不再触发。案例仍被拦截，但靠的是 PII 规则，而不是那条真正描述问题的规则。同一机制也可能在安全规则运行之前抹掉不良事件关键词。
+## 11. 保留语义的打码
 
-当前设计：
+打码不足会泄露标识符。打码过度会破坏叙述，并可能在规则读取文本前删除安全
+关键词。两个方向都是发布门禁。
 
-- 姓名识别锚定在姓氏词典（`config/surnames.json`）上，**只替换姓名本身**，因此"患者"和"医生"得以保留。
-- **实体消解在打码之前执行**，因此章三 / 章医生 / 章主任消解为同一身份、同一稳定 token。两个同姓的不同人会被标记为待确认而非合并——把临床医生的意见错误归属给他人，比多问一句澄清更糟。
-- 这是唯一会看到真实姓名的组件，因此按设计保持本地化与确定性。
+- 姓名识别使用配置词典，只替换命中的姓名片段。
+- 实体消解先于打码，别名得到同一个稳定 token。
+- 两个可能的真实身份不会被静默合并；歧义转为补充信息。
+- 打码组件在本地确定性运行。
+- 打码召回率与源保真度下限均为 1.0。
 
-两个方向都作为发布门禁被度量：打码召回率必须为 1.0，**源保真度**也必须为 1.0（打码没有损坏任何非标识符内容）。
+## 12. 模型网关与路由
 
-## 10. 客户端输入不是事实
+任务路由根据能力、区域、数据分级和发布状态选择。档案保存不透明的凭据引用，
+真实凭据位于环境变量或被 gitignore 的密钥文件。审计记录
+`model_profile_id` 作为稳定业务路由，并记录 `model_upstream` 作为实际应答模型。
 
-结构化表单字段以 `claimed_fields` 进入。决定读取的是 `resolved_fields`，即服务端从叙述本身推导出的结果。与文本矛盾的声明会变成 `claim_discrepancy` finding（CN-020），而不是静默绕过。保留键（`decision`、`severity`、`approval_status`、`routing`、`tool_permissions`）永远无法从入参设置。
+草稿校验会拒绝明文密钥、字面量 endpoint、不完整能力声明以及不兼容的区域或
+数据分级组合。发布会创建不可变 `v{n}` 快照，回滚恢复先前稳定快照。两者都需要
+管理员权限并写入审计。
 
-## 11. 模型网关与路由
+## 13. 失败状态
 
-三个业务 profile 映射到三条任务路由。路由是确定性的，每次调用都会针对能力、区域、数据分级和已发布/启用状态做校验；不兼容的路由会直接抛错而不是猜测。
+```mermaid
+stateDiagram-v2
+    [*] --> RECEIVED
+    RECEIVED --> CHECKED: 鉴权 + 打码 + 确定性规则
+    CHECKED --> DECIDED: 服务端处置
+    CHECKED --> MANUAL_DEGRADED: 外部或模型失败
+    CHECKED --> FAILED_RETRYABLE: 瞬时依赖失败
+    FAILED_RETRYABLE --> MANUAL_DEGRADED: 重试耗尽
+    MANUAL_DEGRADED --> HUMAN_REVIEW: 人工接管
+    CHECKED --> FAILED_SAFE: 不安全未处理条件
+    DECIDED --> ALLOWED: allow
+    DECIDED --> NEEDS_INFO: needs_info
+    DECIDED --> HUMAN_REVIEW: human_review
+    DECIDED --> BLOCKED: blocked
+```
 
-| 任务路由 | 主 Profile | 回退 | 数据分级 |
-| --- | --- | --- | --- |
-| `routine_compliance` | `deepseek-routine` | `kimi-complex` | pii_tokenized、confidential、internal、public |
-| `complex_evidence_reasoning` | `kimi-complex` | 无 | internal、confidential、pii_tokenized |
-| `multimodal_extraction` | `minimax-multimodal` | 无 | pii_tokenized、phi_tokenized |
+**不变量：任何失败或降级状态都不能转到 `ALLOWED`。** 输入失败不生成；输出
+失败不发布；审计失败则发布失败；模型或连接器故障转人工。`FAILED_SAFE`、
+`FAILED_RETRYABLE` 与 `MANUAL_DEGRADED` 都保持可见。
 
-Profile 只持有不透明的 `endpoint_ref`；真实上游模型 id 存在 `config/endpoints/<profile>.json`，而凭据完全不在代码仓库内。这样审计轨迹才稳定：`model_profile_id` 记录业务路由名，`model_upstream` 记录真正应答的供应商模型，**因此把某个 profile 重新指向另一个模型，永远不会改写历史案例的含义**。
+## 14. 复核、规则与审计
 
-发布是版本化的：起草 → 校验 → 发布（`v{n}`）→ 回滚，需管理员权限并全程审计。草稿校验会在发布前拒绝明文密钥、字面量 endpoint，以及不兼容的能力/区域/数据分级组合。
+复核任务按规则 finding 与所需角色创建。队列过滤不会删除底层处置、finding、
+任务或审计事件。`scope=all` 保持技术工作可见。复核决定带与签署内容绑定的
+签名表现形式，S0 与 S1 不能自我批准。
 
-## 12. 两层预检
+质量与审计工作区组合哈希链校验、监督指标、候选回归用例、连接器清单和仅追加
+事件视图。每条记录携带 `sha256(prev_hash + 规范化正文)`。
+`GET /api/audit-trail/verify` 指出第一个不可信位置。审计载荷只使用摘要、标识、
+版本和聚合值，不包含原始正文或 token 映射。
 
-两层都不调用模型。
+## 15. 界面信息架构
 
-| 层 | 触发 | 运行位置 | 预算 |
-| --- | --- | --- | --- |
-| **L0** 本地词元 | 每次击键，120 ms 防抖 | 仅浏览器，无请求 | 即时 |
-| **L1** 确定性预检 | 停顿 400 ms、失焦或粘贴 | `POST /api/cases/precheck` | p95 < 300 ms（实测约 0.3 ms） |
+单页界面包含七个按下列顺序排列的工作区：
 
-三个刻意设计的性质：**L0 永远不会说内容看起来没问题**（本地词表支撑不起"未发现问题"，虚假安心会让使用者误以为沉默等于安全）；**L1 不产生任何记录**（无案例、不存储叙述、无审计条目——草稿不是提交）；**L1 与提交路径共用同一策略包**，因此提示不可能与最终答案矛盾。证据完备性规则被刻意排除在 L1 之外，因为知识库里是否存在支撑记录，是关于检索的事实、而非关于正在书写的这句话——在书写时展示它，只会产生一个再怎么改都清不掉的警告。
+| 工作区 | 作用 |
+| --- | --- |
+| `overview` | 上下文、状态和快捷入口 |
+| `content_check` | 任意内容提交 |
+| `conversation_guard` | 输入、生成、输出状态 |
+| `reviews` | 专业复核队列 |
+| `rules` | 规则查看与受控生命周期 |
+| `quality_audit` | 审计与质量证据 |
+| `settings` | 模型档案、路由和版本 |
 
-草稿按用户与产品维度自动保存到浏览器本地存储，**从不上传**。
+服务端返回能力矩阵。客户端隐藏控件提升易用性，但所有端点仍独立检查权限。
+切换语言会保留草稿与界面状态。机器代码始终与易读标签并列显示。
 
-## 13. 审计链
-
-每条账本记录携带 `sha256(prev_hash + 规范化正文)`。`GET /api/audit-trail/verify` 报告第一个不可信位置。
-
-仅追加是本程序的承诺；**哈希链才是让他人的改动可被发现的机制**。报告的断裂位置是最后一条可验证记录之后的那个位置，而不是问题行上的 `seq`——因为那个字段恰恰是篡改者会去改的东西。
-
-账本没有清除方法，并且有测试专门锁定这个"缺失"："清理一下旧审计记录"正是那种出于好意、却会摧毁该控制措施的改动。
-
-## 14. 代码结构
+## 16. 代码结构
 
 ```text
 apps/api/          FastAPI 应用与路由处理
 src/compliance_guard/
-  agents/          面向模型的步骤：分类、抽取、评估、解释、ICSR、改写
-  audit/           哈希链账本、Trace、指标、签名
-  domain/          契约、枚举、模型（共享词汇表）
-  integrations/    源注册表、CRM / 内容库 / PV 适配器、幂等事件总线
-  knowledge/       标签事实、分块、检索、证据包、适应症本体
-  llm/             网关、路由注册表、mock 与 live 适配器、凭据
-  policy/          规则引擎、严重度、审核路由、策略包
-  review/          队列、签署决定、案例生命周期、反馈
-  security/        实体消解、打码、注入扫描、DLP、会话、鉴权
-  workflow/        编排器、状态机、预检、场景
-  web/             单页界面（原生 JS，双语）
-config/            策略包、提示词、模型 Profile、路由、术语表、endpoint
-data/              合成数据、黄金集、mock 模型响应
+  agents/          有界模型抽取与生成步骤
+  audit/           哈希链、Trace、指标、签名表现形式
+  domain/          共享枚举、请求、响应与 finding
+  integrations/    可选内容源、安全接收与导出契约
+  knowledge/       标签事实、检索、证据包、适应症映射
+  llm/             模型网关、档案、路由、mock 与 live 适配器
+  policy/          规则 Schema、引擎、优先级、规则包、路由
+  review/          复核队列、决定、生命周期、反馈
+  security/        实体消解、打码、注入扫描、鉴权
+  workflow/        内容检查、对话防护、预检、编排
+  web/             七工作区双语界面
+config/            策略包、提示词、模型档案、路由、术语表
+data/              合成数据、黄金集、mock 响应
 tests/             单元、契约、集成、安全、评估
 ```

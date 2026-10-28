@@ -2,13 +2,13 @@
 
 **English** · [简体中文](zh/operations.md)
 
-Running the app, the demo walkthrough, live-model mode, failure playbooks, and
-retention. Written against the implemented code.
+Run the app, operate the seven workspaces, manage rules and model routes, handle
+failures, and retain evidence. This guide describes the implemented service.
 
-## 1. Run
+## 1. Local run
 
-Requires Python 3.12+ (verified on 3.13). `LLM_MODE=mock` is the default and
-makes no network calls.
+Requires Python 3.12+ (verified on 3.13). `LLM_MODE=mock` is the default and makes
+no network calls.
 
 ```text
 python3 -m venv .venv
@@ -16,249 +16,217 @@ python3 -m venv .venv
 LLM_MODE=mock DEMO_MODE=1 PYTHONPATH=src .venv/bin/python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open http://127.0.0.1:8000. On Windows PowerShell set the variables first:
-`$env:LLM_MODE = "mock"; $env:DEMO_MODE = "1"; $env:PYTHONPATH = "src"`.
+Open <http://127.0.0.1:8000>. On Windows PowerShell, set the environment variables
+first: `$env:LLM_MODE = "mock"; $env:DEMO_MODE = "1"; $env:PYTHONPATH = "src"`.
 
-Or one command, which picks a free port, opens the browser, and reports a taken
-port or unwritable data directory as an instruction rather than a traceback:
+The one-command launcher selects a free port and opens the browser:
 
 ```text
 LLM_MODE=mock DEMO_MODE=1 python3 run.py
 ```
 
-Two details in the uvicorn command are deliberate. **`python -m uvicorn`** rather
-than the console script: that wrapper hard-codes an absolute interpreter path at
-install time, so it breaks with a confusing `bad interpreter` error the moment the
-folder is moved or renamed. **`DEMO_MODE=1`** skips the login, because identity
-otherwise comes from a session and a four-workspace walkthrough would need four
-sign-ins.
+Use `python -m uvicorn` instead of the generated console script because the latter
+can hard-code the virtualenv path and break when the checkout moves.
+`PYTHONPATH=src` works with either an editable package install or a direct source
+run. A virtualenv avoids externally managed Python restrictions.
 
-A virtualenv is recommended because a Homebrew or system Python is usually
-externally managed (PEP 668) and refuses a bare `pip install`. `PYTHONPATH=src`
-works whether or not the editable install resolves.
+## 2. Identity and deployment mode
 
-## 2. Running it as a deployment would
+`DEMO_MODE=1` skips login and exposes a four-role selector for a local
+walkthrough. The roles are:
 
-Drop `DEMO_MODE` and a real session is required:
+| Demo role | Intended use |
+| --- | --- |
+| `author` | Submit content, guard AI input, and inspect owned results |
+| `reviewer` | Open review tasks and record professional decisions |
+| `auditor` | Read audit evidence, quality posture, and connectors |
+| `architect` | Inspect and draft model configuration; cannot publish it |
+
+The server permission matrix supports the wider professional role set required by
+review routing. Demo roles are request headers, not authentication. Use real
+sessions outside a trusted local demonstration.
+
+To run with sessions, remove `DEMO_MODE`:
 
 ```text
 LLM_MODE=mock PYTHONPATH=src .venv/bin/python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000
 ```
 
-On first start an initial `admin` password is generated and **printed to the
-console once**. It is never written to the log or to disk, and it must be changed
-before anything else can be done. Changing it ends every session for the account,
-including the current one, because a rotation is usually performed precisely
-because something leaked.
+The first start prints an initial `admin` password once. It is not written to the
+audit ledger or persisted in clear text. The account must change it before normal
+use. A password change ends every session for that account, including the current
+session.
 
-If the account has never been signed into, a later start re-issues and re-prints
-that password. An account that *has* been used keeps its credential: a never-used
-account has no history to protect, while silently re-keying a working identity
-would be a way in rather than a recovery.
+If an account that has never been used loses its initial password, restarting
+reissues it. For an account that has been used, move `data/users.json` aside and
+restart to recover access. That file contains scrypt password hashes and session
+tokens and is gitignored.
 
-Lost the password on an account that has been used? Move `data/users.json` aside
-and restart. That file holds scrypt password hashes and live session tokens, so it
-is gitignored — a committed credential store is one shared with everyone who
-clones the repository.
+This local identity store provides no identity provider, second factor, or user
+administration. It is intentionally a replaceable seam for an enterprise identity
+integration.
 
-**Scope, stated plainly.** This is a minimal local session store, not enterprise
-SSO: no identity provider, no second factor, no user management. It exists so the
-trust boundary sits in the right place, with a seam an OIDC integration can
-replace.
+## 3. Seven workspaces
 
-## 3. The six-case walkthrough
+| Workspace | Purpose |
+| --- | --- |
+| `overview` | Current context, recent activity, and shortcuts into both check entries |
+| `content_check` | Submit arbitrary text and inspect decisions, spans, findings, and versions |
+| `conversation_guard` | Guard input, create a session, generate, and show only released output |
+| `reviews` | Review tasks, evidence, decisions, and signature manifestations |
+| `rules` | Rule versions, testing, batch evaluation, diff, publish, and rollback |
+| `quality_audit` | Audit-chain verification, oversight metrics, regression candidates, connectors, and events |
+| `settings` | Model profiles, task routes, validation, testing, publish, and rollback |
 
-Scenario buttons live in the collapsed **示例与教学 / Examples and training**
-drawer, below the working flow — six sample buttons above the editor make a daily
-tool look like a demo, and the working order for a representative is source →
-context → narrative → submit. With `DEMO_MODE=0` the drawer is hidden entirely.
+Workspace visibility comes from the capability matrix returned by the server.
+Hidden controls improve navigation; every protected endpoint still checks the
+actor and permission.
 
-| # | Scenario | Content | Expected result |
+## 4. Check operations
+
+### Content checking
+
+`POST /api/checks/precheck` is the fast deterministic editor check. It creates no
+case, stores no submitted content, and does not call a model. Treat an empty finding
+list as the result of the current rule pass. It is not a regulatory approval.
+
+`POST /api/checks` persists a versioned check. It resolves entities, masks only the
+identified spans, retrieves admissible evidence, invokes bounded model extraction
+when configured, and sends candidate fields through the deterministic policy
+engine. The response includes the decision, severity, findings, source spans,
+policy version, content version, safe text, and whether a model was called.
+
+Text is checked against the exact submitted version. If a client edits it, the
+client must check the new version rather than reusing an earlier result.
+
+### AI conversation guard
+
+The protected path has three stages:
+
+1. **input** — `POST /api/conversations/guard-input` checks the user message before
+   a model call. A blocked input creates no session and invokes no model.
+2. **generation** — `POST /api/conversations/{conversation_id}/generate` verifies
+   the actor, tenant, checked prompt hash, rule version, and session lifetime. The
+   model receives the server-held safe input and bounded constraints.
+3. **output** — the complete candidate is checked by the shared policy path before
+   release. A blocked or failed output is withdrawn without returning its model
+   text.
+
+A safe input creates a server-side session for 15 minutes. It is bound to the actor,
+tenant, inspected source hash, and rule version. A changed prompt returns
+`conversation_prompt_mismatch`; a changed rule version returns
+`conversation_requires_recheck`; an expired or closed session returns
+`conversation_expired`.
+
+`GET /api/audit-trail/verify` validates the append-only hash chain. It should return
+`ok: true` after normal operation. Investigate before accepting new releases if it
+returns a failing sequence number.
+
+## 5. Six-case walkthrough
+
+The examples in **Examples and training** provide deterministic coverage of the six
+scenario families:
+
+| # | Scenario | Example risk | Expected handling |
 | --- | --- | --- | --- |
-| 1 | `normal` | On-label hypertension guidance | `allow` (S3) |
-| 2 | `ae` | Potential adverse event (皮疹) | `human_review` (S1) → PV + medical |
-| 3 | `pii` | Personal identifier (身份证号) | `blocked` (S1) → security; value masked |
-| 4 | `off_label` | Off-label dose / indication (糖尿病, 100mg) | `human_review` (S1) → compliance + medical |
-| 5 | `redline` | Serious adverse event (昏迷, 危及生命) | `human_review` (S0) → PV + medical |
-| 6 | `injection` | Prompt injection (忽略所有规则…) | `blocked` (S0) → security |
+| 1 | `normal` | Statements consistent with approved product information | `allow` when current evidence supports them |
+| 2 | `ae` | Possible adverse event such as rash | `human_review` with safety and medical routing |
+| 3 | `pii` | Contact or identity details | review or block according to severity; masked before model access |
+| 4 | `off_label` | Unapproved indication or dose | `human_review` with compliance and medical routing |
+| 5 | `redline` | Serious adverse event or commercial inducement | immediate block or professional escalation |
+| 6 | `injection` | Instruction override or permission fabrication | `blocked`; attempt recorded, never executed |
 
-For each case open the **trace** to see the audit timeline
-(`case_received → … → decision → workflow.complete`) and the model-route versions.
-That is where the code-controlled, never-fail-open behaviour is visible.
+The examples are synthetic. `DEMO_MODE=0` hides the training drawer so it is not
+mistaken for production content.
 
-Scenario text stays Chinese in every interface language, and that is enforced by a
-test. Risk detection matches Chinese keywords and the evidence corpus is
-`zh-CN`/`zh-HK` only, so translating the payload would silently disable AE,
-redline, and injection detection and return an empty evidence set.
+## 6. Rule lifecycle
 
-## 4. The four workspaces
+A rule package is immutable once published. The lifecycle is:
 
-| Workspace | For | Shows |
-| --- | --- | --- |
-| Representative | field rep | submit, pre-check hints, masked result, own trace |
-| Reviewer | medical / PV / compliance / legal | evidence, findings, decision form, electronic signature |
-| Model policy | architect (draft/test), admin (publish/rollback) | profiles, routes, versions, history |
-| Quality & audit | QA, audit, regulatory | ALCOA+ posture, interface governance register, audit trail |
+1. Start from the current package and record rule and policy versions.
+2. Draft scope by tenant, market, language, product, therapeutic area, content
+   type, and entrypoint (`content`, `input`, or `output`).
+3. Add deterministic conditions, severity, decision, permitted actions, required
+   review roles, remediation, and evidence requirements.
+4. Test representative positive, negative, overlap, and span cases with
+   `POST /api/rules/test`.
+5. Run the batch or golden regression with `POST /api/rules/evaluate`.
+6. Review `GET /api/rules/diff` before publication.
+7. Publish through `POST /api/rules/publish`, or restore a prior immutable version
+   through `POST /api/rules/rollback`.
 
-Role-based visibility is resolved from `GET /api/permissions` against the server
-permission matrix. **Hiding is a usability aid, not the control** — every
-protected route re-checks permission independently, and a test verifies that an
-`architect` who forces a publish call still receives `403`.
+A rule version change does not rewrite historical checks. An active AI session
+checked against the old version requires rechecking. Publish and rollback require
+an authorised administrator; architecture access alone permits drafting and
+inspection.
 
-### Demo roles
+## 7. Model profile and route lifecycle
 
-With `DEMO_MODE=1` a role selector sets `x-demo-role`, labelled *仅演示模式 /
-demo mode only*. With the flag off it is hidden and the header is refused with
-`401`. That gating closes a real hole: the header previously let a caller name
-their own role, so one changed header was enough to publish model policy or read
-the audit trail. `GET /health/ready` reports `demo_mode`, so the active posture is
-never a guess.
+Model configuration is separated into profiles and task routes.
 
-| Role | Can do | Reachable workspaces |
-| --- | --- | --- |
-| `field_rep` | submit; read own result + trace | Representative |
-| `reviewer` | read evidence, record signed decisions | + Reviewer |
-| `auditor` | audit export, validation posture | + Quality & audit |
-| `architect` | view/draft/test model policy (**not** publish) | + Model policy |
+- A profile names capabilities, region, data-class limits, timeout, credential
+  reference, and upstream model identity.
+- A route selects a profile for a task, such as text extraction, guarded response
+  generation, or multimodal input.
+- Credentials stay in environment variables or a gitignored local secret file.
+  Stored configuration and audit events contain references and redacted values.
+- Draft validation rejects plaintext secrets, literal endpoints, incomplete
+  capability declarations, and incompatible region or data-class combinations.
+- `GET/PUT /api/config/models` inspect and draft configuration.
+- `POST /api/config/models/test` validates a candidate route.
+- `POST /api/config/publish` creates a versioned snapshot.
+- `POST /api/config/rollback` restores the previous stable snapshot.
 
-The wider pharma matrix stays server-side — `msl`, `pv_reviewer`, `qppv`,
-`medical_reviewer`, `mlr_reviewer`, `compliance_admin`, `qa`,
-`regulatory_affairs` — and a test locks that narrowing the picker did not reduce
-the model. Separation of duties worth noting: only `qppv` may release an ICSR
-submission (a PV reviewer can assess a signal but not submit it); `qa` and
-`auditor` read the audit trail but hold neither `review_case` nor
-`config_publish`, because quality oversight is not operational authority.
-`GET /api/permissions` also returns `sop_refs`, mapping each action to the SOP
-that governs it, so a permission reads as a controlled procedure rather than a
-bare capability.
+Architect access can draft, test, and inspect. Publication and rollback require an
+administrator. Each publish and rollback writes an audit event.
 
-To drive the full publish/rollback loop, call the API as
-`x-demo-role: compliance_admin`. Pressing publish as `architect` returns `403`,
-which is the point.
+## 8. Live model mode
 
-## 5. Model policy: draft, test, publish, rollback
-
-1. **View** — published version, redacted profiles (credential refs shown as
-   `****`), routes, history, registry audit events.
-2. **Draft** — edit a profile's timeout, token budget, region, enabled state, or a
-   route's primary/fallback profile, capabilities, data classes, and
-   `requires_human_on_failure` (`PUT /api/config/models`). The server validates
-   the draft: approved adapter, no plaintext secrets, no literal endpoints,
-   compatible capability/region/data class.
-3. **Test** — `POST /api/config/models/test` runs a synthetic connectivity check
-   and reports provider, model, route, and latency, or an error category. In mock
-   mode this never leaves the machine.
-4. **Publish** — `POST /api/config/publish`. Drafts become a new immutable version
-   `v{n}`. Requires an admin role.
-5. **Rollback** — `POST /api/config/rollback` restores the previous stable
-   version. Every publish and rollback is audited.
-
-The runtime snapshot persists to `data/runtime_config.json` so a published state
-survives a restart.
-
-## 6. Live model mode
-
-`LLM_MODE=live` routes the semantic check to a real OpenAI-compatible
-chat-completions provider. Everything else is unchanged: the same policy engine
-decides, the same audit events are written, the same fail-safe rules apply.
+Mock mode is appropriate for development, automated tests, and demonstrations.
+Live mode uses an OpenAI-compatible chat-completions provider selected by the
+published profile:
 
 ```text
 COMPLIANCE_GUARD_LLM_BASE_URL=https://<provider-host> \
 COMPLIANCE_GUARD_LLM_API_KEY=<your-key> \
-LLM_MODE=live PYTHONPATH=src .venv/bin/python -m uvicorn apps.api.main:app --port 8000
+LLM_MODE=live PYTHONPATH=src .venv/bin/python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000
 ```
 
-The key can instead live in the gitignored `config/secrets/llm.local.json`
-(`{"base_url": "...", "api_key": "..."}`); the environment wins over the file. The
-key is never written to a snapshot, an API response, an audit event, or a log.
-Endpoint files must contain no secrets, and the loader rejects them if they do.
+Keep the provider host and key outside committed files. The provider sees only the
+bounded, masked request. Model output remains a candidate and cannot set release
+permission. Conversation output is fully buffered and checked before display.
 
-The header badge changes from **离线演示模式 / Offline demo mode** to **已接入真实
-大模型 / Live model connected**. If live mode is on but the provider is not usable,
-the badge reads **大模型未就绪 / Model not ready** and `/health` reports
-`model_service.ready: false`; nothing high-risk is released in that state.
+## 9. Failure playbooks
 
-**What still holds in live mode**, enforced by tests rather than convention:
-
-- The model only proposes candidates. It cannot set decision, severity, approval
-  status, routing, or tool permissions.
-- Identifiers are masked **before** the request leaves the process; the model sees
-  tokens such as `[HCP_TKN_…]`, never a real name.
-- Every provider failure (timeout, 4xx/5xx, truncation, non-JSON, missing
-  credential) becomes a fail-safe error category, so an outage degrades to human
-  review and can never look like an approval.
-- Candidates for conditions the server determines (missing evidence, missing
-  context, permission failure, evidence conflict) are recorded in the audit trail
-  but never promoted into findings, so model prose cannot move the decision.
-
-No new dependency is needed; the adapter uses the already-pinned `httpx`.
-
-## 7. Failure playbooks
-
-| Situation | What happens | What to do |
+| Condition | Expected state | Operator action |
 | --- | --- | --- |
-| **Model timeout** | `error_category=timeout` → `MANUAL_DEGRADED`, `human_review` S1, reviewer task enqueued | Check `/health` and the trace; confirm which route timed out; review manually |
-| **Schema failure** | Invalid model output → `MANUAL_DEGRADED` with a reviewer task (or `FAILED_SAFE` → `REFUSED` if a route disabled `requires_human_on_failure`) | Treat as a data-quality incident; inspect output schema and profile; re-run the golden set |
-| **Retrieval gap** | No evidence → `needs_info` (CN-012, S2); contradiction → `human_review` (CN-010, S1) | Supply evidence or resolve the conflict; the case stays queued |
-| **Prompt injection** | Flagged before the model call; CN-005, S0, `blocked`, routed to security. Tool/route tamper is recorded, never executed | Escalate to security; do not retry the content as-is |
-| **Permission denial** | `403` with `{"error":{"code":"forbidden"}}`; audited | Fix the role; never bypass the denial |
-| **Duplicate event** | Deduped by `(tenant_id, event_id)`; duplicate returns the original result, no repeated side effects | Confirm `created_case_count` is 1; check DLQ if side effects repeated |
-| **Event processing failure** | Transient → DLQ `next_action=retry` up to `max_attempts` (3), then `manual_review`; permanent → `manual_review` immediately | Read the DLQ, replay retryables, handle `manual_review` as incidents |
-| **Bad publish** | — | Roll back as `compliance_admin`; verify the version reverted and the snapshot persisted |
-| **Unsafe error** | Any uncaught exception → `REFUSED` + `FAILED_SAFE`, human review enqueued. The HTTP body never echoes the exception or request content | Reproduce from the trace, fix, re-run the suite |
-| **Audit chain broken** | `GET /api/audit-trail/verify` returns `ok: false` with `first_broken_seq` | A data-integrity incident, not a bug. Preserve the file before touching anything, then establish who had write access. The chain says something changed, not what |
-| **Service refuses to start** | Startup raises `ConfigurationError` naming the file | Fix that file. An expired policy bundle is refused on purpose |
-| **Ready false, live true** | `/health/ready` lists the failing dependency | The process is alive but cannot answer correctly. Do not restart — restarting a healthy process will not fix a bad file |
+| Provider timeout or malformed candidate | `MANUAL_DEGRADED` | Keep release held; retry only under the current policy and profile |
+| Transient dependency failure | `FAILED_RETRYABLE` | Use bounded retries, then hand the case to a person |
+| Unsafe condition cannot be resolved | `FAILED_SAFE` | Do not publish; preserve the safe error and escalate |
+| Masking component failure | Failed or held | Do not send source text to the model |
+| Audit write failure | Release fails | Restore audit service health before retrying the release |
+| Rule version unavailable or changed | Rejected or held | Recheck against the current published version |
+| Conversation expired | `conversation_expired` | Run input checks again; do not extend a stale approval |
 
-### Two alarms that point the unusual way
+`MANUAL_DEGRADED`, `FAILED_RETRYABLE`, and `FAILED_SAFE` never transition to
+`ALLOWED`. Publication requires a successful output check and audit event.
 
-| Signal | Where | Why it matters |
-| --- | --- | --- |
-| **Override rate below 2%** | `GET /api/metrics` → `oversight.status: warning` | Investigate whether review has become a formality. This alarm points *downward* on purpose: a reviewer who never disagrees looks identical to a flawless system in the record |
-| **Abandonment above 20%** | `GET /api/metrics` → `usability.status: warning` | Representatives are clearing the editor after a warning. Nothing is blocked and no finding is raised, so this failure is invisible in the safety numbers. Read it *beside* them: a falling detection count next to a rising abandonment count means the rules got tighter, not that risk went away |
+Two health signals can move in an unexpected direction. A rising override rate can
+show that reviewers are losing trust in the rules; a falling review completion rate
+can show that the queue is blocking work. Inspect both with the case evidence rather
+than optimising either number alone.
 
-Appeals with a high sustained overturn rate (`GET /api/appeals` →
-`summary.overturn_rate`) mean the rule needs fixing, not the queue. Absorbing the
-same false positive case by case leaves the cause in place.
+## 10. Health and retention
 
-## 8. Graded health
+`GET /health/live` proves the process is alive. `GET /health/ready` checks startup
+dependencies. `GET /health` provides the graded health view used by operators.
 
-| Endpoint | Answers |
-| --- | --- |
-| `GET /health/live` | Is the process up? Touches no dependency, so a brief file-read failure cannot trigger a restart loop |
-| `GET /health/ready` | Can it answer, on which versions, under which retention policy, in which posture |
-| `GET /health` | Retained for existing callers and the UI mode badge |
+Audit events record identifiers, actor, time, versions, decisions, rule references,
+safe hashes, and failure categories. They do not include raw source text, sensitive
+entity mappings, token maps, system prompts, or complete model output by default.
+Access to audit content and release actions remain separately authorised.
 
-Configuration is validated at **startup**, and an invalid configuration refuses to
-start with the filename in the message. Previously a malformed bundle surfaced on
-the first request that needed it — which means the first *user* found it,
-mid-sentence.
-
-## 9. Retention
-
-Declared in `runtime_config.retention_policy()` and reported by `/health/ready`.
-The `enforced` column is the one to read first: a retention period nothing
-implements reads as a control while the store grows forever, so the two states are
-reported separately rather than implied.
-
-| Store | Retention | Enforced | Why |
-| --- | --- | --- | --- |
-| Audit ledger | never auto-deleted | no sweep exists | Must equal or exceed the records it describes. A sweep would defeat the chain that exists to make deletion detectable |
-| Feedback candidates | never auto-deleted | no sweep exists | Confirmed candidates become regression cases |
-| Notifications | 90 days | yes, swept on read | An **unread** notification is never swept: expiring an outcome the author has not seen would lose it silently |
-| Resolved appeals | 90 days | yes, same sweep | A **pending** appeal never expires; expiring outstanding work would close it by neglect |
-| Pre-check log | 7 days | not yet | Latency telemetry only; no decision depends on it |
-| Drafts | 7 days, browser-local | yes, in the browser | Never uploaded; the server never holds them |
-
-The sweep runs opportunistically on read rather than on a timer: this is a single
-local process with no scheduler, and a background thread whose only job is
-deleting records is a poor trade when the sweep is cheap.
-
-## 10. Runtime artifacts (all gitignored)
-
-- `data/audit/` — append-only, hash-chained JSONL ledger
-- `data/runtime_config.json` — persisted published model-policy snapshot
-- `data/users.json` — local accounts and session tokens
-- `data/golden_set/candidates.jsonl` — misclassification reports awaiting a second
-  person's confirmation before they may enter the golden set
-- `artifacts/` — evaluator reports
+Standalone state lives under `data/` as local JSON and JSONL. Treat those files as
+operational records: restrict filesystem access, back them up according to the
+deployment retention policy, and never commit them. `artifacts/` contains generated
+reports and is also gitignored.

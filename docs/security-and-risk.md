@@ -2,190 +2,157 @@
 
 **English** · [简体中文](zh/security-and-risk.md)
 
-Trust boundaries, the AI risk register, and the control that mitigates each risk.
-Every control listed here is implemented and covered by a test.
+Trust boundaries, the AI risk register, and the controls that mitigate each risk.
+The controls correspond to the implemented service and its regression suite.
 
 ## 1. Trust boundaries
 
-Four boundaries, in the order a request crosses them.
+Three boundaries matter in every request:
 
 | Boundary | Rule | Enforced by |
 | --- | --- | --- |
-| **Client → server** | Client input is data, never fact or authority. Structured fields become `claimed_fields`; the server derives `resolved_fields` | `claim_discrepancy` (CN-020); reserved keys rejected |
-| **Server → model** | Identifiers are masked before the process boundary. The model receives tokens and structured facts, never raw names or label prose | `security/pii_gateway.py`, entity resolution, data-class routing |
-| **Model → decision** | Model output is a candidate. It cannot set decision, severity, approval status, routing, or tool permissions | `agents/extractor.py` → schema validation → `policy/engine.py` |
-| **Server → external system** | Content is re-read from the source of record; writes require an approval token plus an idempotency key | `integrations/` adapters; no generic admin tool exists |
+| **Client → check service** | Content and claims are untrusted data. The server derives identity, tenant, policy scope, severity, routing, and release permission | Session or demo-role resolution, tenant checks, request schemas, reserved-field rejection, deterministic policy |
+| **Check service → model** | Prompt injection is scanned and identifiers are masked before external model access. Only bounded facts and the server-held safe input are sent | Injection scanner, entity resolution, span-only masking, data-class routing, profile validation |
+| **Model candidate → publication** | Model output cannot set a decision or release itself. The complete candidate must pass schema validation and the output policy check | Bounded gateway, output buffering, policy engine, audit-before-release |
 
-The third boundary is the one that matters most, and it is structural rather than
-prompted: there is no code path from model output to a final verdict.
+Connector responses and imported rule files are untrusted inputs inside the first
+boundary. Rules are schema-validated and connector records are re-read by id and
+version. A response that names a role, route, tool, or approval does not acquire
+that authority.
 
-## 2. Risk register
-
-| # | Risk | L | I | Implemented control |
-| --- | --- | --- | --- | --- |
-| R1 | Model hallucination | M | H | Candidate-only output; server policy decides; schema validation fails safe; S0/S1 findings must carry evidence refs or an explicit gap |
-| R2 | Evidence staleness / cross-version release | M | H | Version-gated retrieval; immutable knowledge snapshot ids; release gate on cross-version release |
-| R3 | Missed safety signal (AE/SAE) | M | H | CN-001 / CN-002 with Chinese pattern sets and aliases; PV + medical routing; never auto-submitted to PV |
-| R4 | PII/PHI leakage | M | H | Tokenization before the model call; DLP; data-class-aware routing; CN-006/007 (S1), CN-008 (S0) |
-| R5 | Prompt injection | H | H | Scan before the model call; CN-005 S0 block; tool/route tamper recorded, never executed; red-team holdout cases |
-| R6 | Retrieval poisoning / evidence gap | M | M | Release gating mirrors ingestion gates (source type, active, scope, signed); empty or contradictory packs become explicit gaps, never a silent allow |
-| R7 | Provider outage, timeout, bad output | M | M | Fail-safe state machine; every route requires human on failure; fallback profiles |
-| R8 | Route drift (wrong model for task) | L | M | Deterministic routing validated per call on capability, region, data class, enabled state; immutable published routes |
-| R9 | Duplicate external events | M | M | Idempotent event bus keyed by `(tenant_id, event_id)`; deterministic case ids; DLQ with replay |
-| R10 | Queue overload | L | M | Bounded metrics store holding aggregates only; severity/SLA-ordered queue; degraded cases always enqueue a task |
-| R11 | Bad model-policy publish | L | H | Versioned registry; admin-gated publish/rollback; draft validation; audited |
-| R12 | Commercial redline (bribery/inducement) | H | H | CN-003 with Chinese patterns (回扣/宴请/红包/礼品/好处费); blocked; compliance + legal |
-| R13 | Wrong reviewer (RACI misrouting) | M | M | `required_roles` and SLA per rule; review tasks keyed by finding; evaluator checks expected roles per case |
-| R14 | Over-trust in the tool (automation bias) | M | H | Override-rate floor alarm; abandonment tracking; S0/S1 cannot be self-approved |
-| R15 | Data residency / cross-border | M | H | Tenant/market-filtered retrieval; region-constrained profiles; synthetic data only; no network calls in mock mode |
-| R16 | Audit tampering | L | H | Hash-chained ledger; verification endpoint; no purge method, and a test pins its absence |
-| R17 | Self-declared identity | M | H | Server sessions replace the role header; `x-demo-role` only under `DEMO_MODE`, refused otherwise |
+## 2. AI risk register
 
 L = likelihood, I = impact.
 
-## 3. Masking: both failure directions
+| # | Risk | L | I | Control |
+| --- | --- | --- | --- | --- |
+| R1 | Model hallucination | M | H | Candidate-only output; schema validation; deterministic policy; S0/S1 evidence requirements |
+| R2 | Stale or cross-version evidence | M | H | Snapshot ids; current-version retrieval; cross-version release gate |
+| R3 | Missed adverse-event signal | M | H | CN-001 and CN-002 safety patterns; safety and medical routing; no automatic regulatory submission |
+| R4 | Personal or health data leakage | M | H | Entity resolution and span-only masking before model access; CN-006/007 S1 and CN-008 S0 controls |
+| R5 | Prompt injection | H | H | Scan before model access; CN-005 S0 block; attempted tool or route changes are recorded and never executed |
+| R6 | Evidence gap or retrieval poisoning | M | M | Closed-world retrieval; admissibility checks; explicit `needs_info` or review; no silent allow |
+| R7 | Provider outage, timeout, or malformed output | M | M | Failure-safe states; bounded retries; manual takeover; no unchecked publication |
+| R8 | Wrong model for the task | L | M | Published task route checked on capability, region, data class, and enabled state |
+| R9 | Duplicate external event | M | M | Idempotency keyed by `(tenant_id, event_id)`; deterministic records; visible dead-letter replay |
+| R10 | Queue overload | L | M | Bounded aggregate metrics; severity/SLA ordering; degraded cases still create work |
+| R11 | Bad model-policy publication | L | H | Versioned draft validation; administrator-only publish and rollback; audit event |
+| R12 | Commercial inducement | H | H | CN-003 detects bribery or inducement wording, blocks release, and routes to compliance and legal |
+| R13 | Wrong reviewer or role | M | M | Rule-level required roles and SLA; one review task per required role; server permission check |
+| R14 | Automation bias | M | H | Override-rate floor alarm; abandonment signal; S0/S1 cannot be self-approved |
+| R15 | Data residency or cross-border access | M | H | Tenant and market filtering; region-constrained profiles; synthetic repository data; zero network calls in mock mode |
+| R16 | Audit tampering | L | H | Append-only hash chain; verification endpoint; no purge path |
+| R17 | Self-declared identity | M | H | Server sessions; demo role headers accepted only under `DEMO_MODE`; protected APIs check permission |
 
-Under-masking leaks an identifier. Over-masking deletes narrative — and that is
-the failure mode that hides risk, because it can strip an adverse-event keyword
-before the safety rules read the text.
+## 3. Input, generation, and output
 
-Both are release gates with a floor of 1.0: **masking recall** (nothing that must
-be masked survives) and **source fidelity** (nothing that is not an identifier is
-damaged). Neither is a tunable target. There is no acceptable number of unmasked
-names, and no acceptable number of deleted symptoms.
+An AI request traverses three stages:
 
-Entity resolution adds a third measure: **wrong-merge rate must stay below 0.01**,
-tighter than the 0.95 coreference-accuracy target beside it, because merging two
-clinicians attributes one person's opinion to another.
+1. **Input** — scan injection, resolve and mask identifiers, apply entrypoint
+   rules, and stop before the model when the decision is `blocked`.
+2. **Generation** — create a 15-minute server session bound to actor, tenant,
+   inspected source hash, rule version, safe input, and allowed constraints. Only
+   the same checked prompt may generate.
+3. **Output** — buffer the complete candidate, validate its schema, and apply the
+   shared policy plus output-scoped rules. Release only when the overall decision
+   is `allow` and every finding permits publication.
 
-## 4. Injection defence
+A blocked output is withdrawn. Its model text is not echoed as part of the safe
+response. An output-check exception returns `failed_safe` or a manual-degraded
+state. No failure path publishes unchecked text.
 
-The scan runs **before** the model call, so hostile instructions never reach the
-model. A detection is CN-005: S0, `blocked`, routed to security, immediate SLA.
+The generated response may propose facts and wording. It cannot decide severity,
+the final disposition, review route, approval, or tool permission. Prompt changes,
+actor changes, tenant changes, expired sessions, and rule-version changes all
+invalidate the authorization to generate.
 
-Attempts to tamper with tools or routing are **recorded and routed, never
-executed**. Reserved form keys cannot be set from intake. Red-team cases
-(G-37..G-42) are quarantined as a never-tune holdout set, and a release gate fails
-if any known injection ends in `allow`.
+## 4. Masking: both failure directions
 
-Injection also demonstrates the queue-scope rule below: it stays blocked, but it
-does not clutter a medical reviewer's queue.
+Under-masking leaks an identifier. Over-masking damages the narrative and can
+remove an adverse-event word before the safety rules read it. Both are release
+gates with a floor of 1.0.
 
-## 5. Review queue scope
+- Names and identifiers are replaced only at selected entity spans.
+- Entity resolution runs before masking so aliases of one person receive one
+  stable token.
+- Uncertain identity merges become `needs_info`; the system does not silently
+  combine two possible people.
+- Masking recall and source fidelity are measured separately. A perfect recall
+  score cannot compensate for deleted symptoms.
+- The mapping from a token back to a person is restricted operational data and is
+  absent from model requests and default audit payloads.
 
-The professional review queue lists only findings a medical or compliance reviewer
-can act on. Platform-security work — prompt injection, permission failures,
-irreversible-write blocks — routes to security/admin and is excluded from the
-default queue. A medical reviewer has no action to take on an injection attempt.
+## 5. Injection and model-boundary defence
 
-**Excluding a queue row never suppresses a finding.** The decision stays
-`blocked`, the finding stays on the case and in the representative's result, the
-review task is still created and still written to the ledger, and
-`GET /api/reviews?scope=all` returns the security tasks. The response reports
-`business_count` and `technical_count`, so the existence of technical work is
-visible even when it is not listed. Four tests lock this, including that an
-injection case is still blocked after filtering.
+The injection scan runs before model access. CN-005 is S0, `blocked`, and routed
+for immediate security or compliance handling. Known injection cases are quarantined
+from prompt tuning, and a single dangerous `allow` fails the release report.
 
-## 6. Pharmacovigilance assessment
+Content can attempt to change routes, call tools, reveal prompts, change a
+decision, or name a privileged role. These strings remain data. Server routing is
+resolved from trusted configuration, and no tool edge exists from model output to
+release permission.
 
-When a narrative contains an adverse-reaction term, the case carries an ICSR
-assessment against the four minimum criteria:
+Masking and injection scanning also apply to output where the rule scope requires
+it. Output buffering prevents partial publication before the complete candidate is
+checked.
 
-| Criterion | Satisfied by |
-| --- | --- |
-| Identifiable patient | A patient term, or a tokenized patient entity |
-| Identifiable reporter | A reporter term, or the submitting representative |
-| Suspect medicinal product | The product in the case context |
-| Suspect adverse reaction | A reaction term in the narrative |
+## 6. Review, signatures, and override
 
-Criteria ask whether an identifiable party **exists**, never that the system holds
-their identifiers — the assessment runs on the tokenized narrative, so it is
-compatible with the masking invariant.
+Review tasks are created from findings and required roles. A reviewer may agree,
+request information, block, or escalate with a reason. S0 and S1 findings cannot be
+self-approved. A signature manifestation is bound to the reviewed content version;
+editing the content invalidates the prior decision.
 
-Reporting clock, anchored on first company awareness rather than triage time:
+The review queue preserves the underlying decision, finding, tasks, and audit
+events. A filtered queue hides work from a view; it does not delete evidence.
 
-| Seriousness | Clock |
-| --- | --- |
-| Fatal, life-threatening | 7 calendar days, expedited |
-| Other serious (hospitalisation, disability, congenital anomaly) | 15 calendar days, expedited |
-| Non-serious | Aggregate reporting, no expedited clock |
+Oversight is measured in both directions. The system tracks whether reviewers trust
+the tool enough to use it and whether work is being corrected or abandoned. Both
+false positives and missed risks can become regression candidates after a second
+person confirms them.
 
-**An incomplete ICSR never suppresses a signal.** Missing criteria become a
-follow-up task and the case still routes to pharmacovigilance. That is the single
-most important behaviour in the module and it is pinned by a test. The panel also
-surfaces `assessment_conflict` when the policy engine flagged a safety finding but
-the ICSR read is not safety-relevant — a discrepancy a reviewer must see rather
-than a silent disagreement.
+## 7. Data integrity and audit
 
-This is a triage aid, not a safety database, and not regulatory advice. Clock
-conventions vary by market and product lifecycle.
+The audit log is an append-only hash chain. Each record includes the prior hash, a
+canonical safe payload, and a digest. `GET /api/audit-trail/verify` identifies the
+first position that cannot be verified.
 
-## 7. Electronic signatures
+Default audit records contain:
 
-Every recorded review decision carries a Part 11-style manifestation with the
-three required elements: printed name of the signer, date and time, and the
-**meaning** of the signature (approved for release / rejected / escalated /
-returned for information).
+- Actor and tenant identifiers, request identifiers, and time.
+- Entrypoint, content type, policy and rule versions, and safe content hashes.
+- Decisions, severities, finding references, review routes, and model profile ids.
+- Model-call status, timing, output-check status, withdrawal, and failure category.
 
-The signature is bound to the decision with a SHA-256 digest over the signed
-content, so it cannot be transferred to different content to falsify a record;
-verification fails if any bound field changes.
+They do not contain raw source text, complete model output, sensitive entity values,
+token-to-identity mappings, system prompts, or credentials. Audit access and audit
+export are separately authorised.
 
-**Honest about strength.** There is no identity provider, no second factor, and no
-certificate, so `signature_kind` is recorded and displayed as
-`demo_manifestation`. It demonstrates the shape of a compliant signature and makes
-no validation claim.
+Audit-before-release is a control. If the audit event cannot be written, the release
+operation fails. A successful release without the corresponding audit event would
+break both traceability and attribution.
 
-## 8. Data integrity (ALCOA+)
+## 8. Secrets and connectors
 
-The quality workspace states how the ledger satisfies attributable, legible,
-contemporaneous, original, accurate, and complete/consistent/enduring/available.
-Automated pipeline steps are attributed to the system rather than to a person,
-which the panel says explicitly instead of implying a human actor.
+Model credentials live in environment variables or a gitignored secret file.
+Profiles store references and redacted values. Draft validation rejects plaintext
+secrets and literal provider endpoints. Published configuration is versioned.
 
-The interface governance register records, per connector: vendor, interface
-version, auth mode, credential *reference* (never a value), data residency, data
-classification, validation status, GxP relevance, governing SOP, retention period,
-and write capability. Every connector reports `validation_status: not_validated`.
+Optional content-source, safety-intake, and review-export connectors are separate
+trust boundaries. They declare capabilities, data classes, permitted actions, and
+health. Event delivery is a notification; the server re-reads an authoritative
+source by record id and version. Connector failure never turns missing evidence or
+a safety signal into approval.
 
-The audit trail is permission-restricted because it names who did what:
-`field_rep` and `msl` receive `403`.
+## 9. Scope and non-claims
 
-## 9. Human oversight, measured in both directions
+This repository is a working reference for medical content and AI conversation
+controls. It does not claim GxP/CSV qualification, regulatory approval,
+pharmacovigilance validation, or fitness for a particular market. Repository data
+is synthetic.
 
-A high override rate is the obvious alarm. The low one matters just as much: if
-reviewers almost never disagree, review may have become a formality, and a
-rubber-stamping reviewer looks identical to a flawless system in the record. So the
-oversight metric warns **below 2%** as well.
-
-Abandonment is tracked for the same reason — a warning shown, the paragraph
-deleted. Nothing is blocked and no finding is raised, so that failure is invisible
-in the safety numbers. A falling detection count beside a rising abandonment count
-means the rules got tighter, not that risk went away.
-
-S0 and S1 cannot be self-approved, which puts a structural floor under both.
-
-## 10. Secrets
-
-Credentials never enter the repository. Profiles hold a `credential_ref`; the real
-key comes from `COMPLIANCE_GUARD_LLM_API_KEY` or the gitignored
-`config/secrets/llm.local.json`. Draft validation rejects plaintext secrets and
-literal endpoints before publish. Logs and audit payloads carry digests, ids, and
-aggregates only. Profile responses redact credential refs to `****`.
-
-## 11. Scope and non-claims
-
-This is an MVP. It demonstrates the *shape* of these controls so the design can be
-reviewed; it is not a validated implementation.
-
-- **No claim** of GxP/CSV, PV, MLR, or regulatory validation.
-- **No live integration** with any CRM, content vault, or safety system. Adapters
-  are contract-only, with `mock://` receipts and an in-memory store; contract tests
-  assert no network call by monkeypatching the socket layer.
-- The ICSR module is a triage aid, not a safety database.
-- Signatures are `demo_manifestation`: no identity provider, no second factor.
-- Sessions are a minimal local store, not enterprise SSO.
-- Every connector reports `validation_status: not_validated`.
-- All data is synthetic or de-identified. No real patient, HCP, or market data.
-
-Nothing here is regulatory advice.
+The local identity store, JSON persistence, mock connectors, and demonstration
+views are not a production validation package. A deployed system needs its own
+threat model, identity integration, retention design, monitoring, access review,
+backup and recovery plan, and qualified validation evidence.

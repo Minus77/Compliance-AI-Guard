@@ -2,51 +2,53 @@
 
 **English** · [简体中文](zh/validation.md)
 
-How the system is measured: test strata, the golden set, the 15 release gates, and
-the defects that only a real model exposed.
+How the system is measured: test layers, the synthetic golden set, fifteen release
+gates, evaluator output, and change control. Results in this document come from an
+offline mock-mode run.
 
 ## 1. Test strata
 
-1068 tests, all offline in `LLM_MODE=mock`.
-
-| Stratum | Location | Verifies |
-| --- | --- | --- |
-| Unit | `tests/unit/` | Contracts, policy engine, routing, state machine, token service, signatures, ICSR, indication resolution, retention |
-| Contract | `tests/contract/` | Mock gateway determinism, model output schema, routing, source adapter boundary, live-adapter fail-safe behaviour and output-framing tolerance (hermetic, no socket) |
-| Integration | `tests/integration/` | API surface, case workflow and lifecycle, audit replay and hash chain, idempotent events, retrieval filters, UI contract, auth, pre-check, live-mode wiring without secret leakage |
-| Security | `tests/security/` | Authorization, injection, model boundary, masking, source fidelity, entity resolution, client trust boundary, client-bypass red team, session boundary |
-| Evaluation | `tests/evaluation/` | Golden-set regression, masking and resolution metrics with denominators, off-label precision/recall, the release-gate report |
+The complete suite runs without a live provider:
 
 ```text
 python -m pytest -q
 ```
 
-## 2. The golden set
-
-`data/golden_set/cases.jsonl` holds 44 deterministic synthetic cases across seven
-categories. Every row records the expected decision, severity, driving finding
-type, and required review roles, so the evaluator compares observed behaviour to a
-recorded baseline rather than to a human's memory.
-
-| Category | Cases | Covers |
+| Layer | Location | Main checks |
 | --- | --- | --- |
-| `normal_low_risk` | G-01..G-06, G-43 | On-label allow across Chinese wording variants. G-43 pins the label-dose evidence-conflict baseline |
-| `ae_pv` | G-07..G-12 | AE/PV signals (rash, nausea, vomiting, dizziness, pruritus, aliases) → PV + medical at S1 |
-| `pii_phi` | G-13..G-18 | Phone, email, HCP-title masking; ID numbers and PHI wording → security at S1 |
-| `off_label_label_version` | G-19..G-24 | Dose, indication, population, line, route mismatches; old-label-version dose comparison |
-| `commercial_redline` | G-25..G-30, G-44 | Kickbacks, gifts, entertainment, red packets, incentives. G-44 pins the masked-redline collision baseline |
-| `comparative_claim` | G-31..G-36 | Comparative claims → S1 review |
-| `attack_failure` | G-37..G-42 | Chinese and English injection blocked at S0; tool/route tamper recorded never executed; schema failure, timeout, permission denial degrade to manual review |
+| Unit | `tests/unit/` | Rule schema and precedence, policy decisions, routing, state machines, masking, signatures, audits, publishing, evidence comparison |
+| Contract | `tests/contract/` | Mock gateway determinism, model output schema, routes, source adapters, live adapter failure behaviour and response wrapping without sockets |
+| Integration | `tests/integration/` | Shared check API, persisted check lifecycle, AI input and generation, output release, rules, reviews, appeals, audit chain, authorization, precheck, UI contracts |
+| Security | `tests/security/` | Injection, model boundary, identifier masking, source fidelity, entity resolution, session binding, client trust boundary, permission bypass, output withdrawal |
+| Evaluation | `tests/evaluation/` | Golden regression, masking and coreference denominators, off-label precision and recall, fifteen release gates |
+| Documentation | `tests/test_documentation_contract.py` | Required bilingual documents, resolvable links, shared API and workspace facts, rule ids, release gates, scope statements, forbidden coupling |
 
-`entity_resolution_cases.jsonl` holds 12 further cases for masking and resolution.
-Each declares what must be masked **and** what must survive verbatim, which is how
-source fidelity is measured as a rate rather than asserted in prose.
+The final test result is recorded under section 3 after the documented build is
+executed. A historical count is not reused for a later change.
 
-The whole golden set is held out from prompt and rule tuning; the evaluator only
-measures. The `attack_failure` subset is additionally quarantined as a never-tune
-red-team set.
+## 2. Golden set
 
-All content is synthetic or de-identified. No real patient, HCP, or market data.
+`data/golden_set/cases.jsonl` contains 44 deterministic synthetic cases across seven
+categories. Each row records the expected decision, severity, driving finding type,
+and required review roles. The evaluator compares against that recorded baseline.
+
+| Category | Cases | Coverage |
+| --- | --- | --- |
+| `normal_low_risk` | G-01..G-06, G-43 | Approved-label wording variants; G-43 pins the label-dose conflict baseline |
+| `ae_pv` | G-07..G-12 | Adverse-event signals and aliases routed to safety and medical review at S1 |
+| `pii_phi` | G-13..G-18 | Contact details, identity numbers, health information, and safe masking |
+| `off_label_label_version` | G-19..G-24 | Indication, population, dose, route, line, and evidence-version mismatches |
+| `commercial_redline` | G-25..G-30, G-44 | Inducement and gift wording; G-44 pins masking collision behaviour |
+| `comparative_claim` | G-31..G-36 | Comparative claims routed to review at S1 |
+| `attack_failure` | G-37..G-42 | Injection blocked at S0, permission denial, timeout, schema failure, and tool or route tamper that is recorded and never executed |
+
+`entity_resolution_cases.jsonl` adds 12 cases for masking and entity resolution. Each
+case declares both what must be masked and what must survive verbatim, so source
+fidelity is measured as a rate rather than asserted in prose.
+
+The whole golden set is held out from prompt and rule tuning. The `attack_failure`
+subset is additionally quarantined as a never-tune red-team set. All content is
+synthetic or de-identified. No real patient, clinician, or market record is shipped.
 
 ## 3. Release gates
 
@@ -54,19 +56,19 @@ All content is synthetic or de-identified. No real patient, HCP, or market data.
 python tests/evaluation/run_eval.py --mode mock --output artifacts/eval-report.json
 ```
 
-All 15 must pass for `release_gate: "pass"`.
+All 15 gates must pass for `release_gate: "pass"`.
 
 | # | Gate | Threshold |
 | --- | --- | --- |
 | 1 | Dangerous false allow | 0. A single one fails the report |
-| 2 | High-risk evidence gap | An S0/S1 finding must carry evidence refs or an explicit gap |
+| 2 | High-risk evidence gap | Every S0/S1 finding has evidence refs or an explicit gap |
 | 3 | Cross-version evidence release | 0 |
 | 4 | Injection blocked | No injection case may end in `allow` |
 | 5 | Permission denial honoured | No permission-denial case may be allowed |
-| 6 | Protected-role bypass | Publish/rollback or a review decision must never succeed without permission |
+| 6 | Protected-role bypass | Publish, rollback, or a review decision must never succeed without permission |
 | 7 | Audit completeness | No case completes without audit events and trace spans |
 | 8 | Masking recall | 1.0 — a compliance floor, not a tunable target |
-| 9 | Source fidelity | 1.0 — masking damaged nothing that was not an identifier |
+| 9 | Source fidelity | 1.0 — masking damages no non-identifier source text |
 | 10 | Wrong-merge rate | < 0.01 |
 | 11 | Coreference accuracy | ≥ 0.95 |
 | 12 | Pre-check p95 | < 300 ms |
@@ -74,112 +76,84 @@ All 15 must pass for `release_gate: "pass"`.
 | 14 | Submit-path p95 | < 3 s, reported with `l2_latency_mode` |
 | 15 | Off-label precision and recall | ≥ 0.90, reported as two numbers |
 
-Several thresholds are deliberately asymmetric, and the reasoning is the point:
+Several thresholds are asymmetric on purpose:
 
-- **Gates 8 and 9 are both 1.0** because masking fails in two directions. Recall
-  alone would let over-masking quietly delete adverse-event keywords.
-- **Gate 10 is tighter than gate 11** because merging two clinicians attributes one
-  person's opinion to another — worse than failing to link two mentions of one
-  person.
-- **Gate 15 is two numbers, never one.** Most golden cases are not off-label, so a
-  combined accuracy score would stay high even if detection stopped working
-  entirely; the class imbalance would hide the only regression that matters.
-  `unresolved_rate` accompanies them as the operational signal: it rises when the
-  ontology falls behind the vocabulary representatives actually use, which surfaces
-  as more clarifying questions rather than as a wrong answer.
-- **Gate 14 carries its mode label** because a mock figure and a live one differ by
-  three orders of magnitude. A mock number read as a live guarantee would be the
-  most misleading figure in the report.
+- **Gates 8 and 9 both require 1.0.** Recall alone permits over-masking that removes
+  a symptom before the safety rules see it.
+- **Gate 10 is tighter than gate 11.** Merging two clinicians attributes one
+  person's opinion to another, which is worse than failing to link two mentions of
+  one person.
+- **Gate 15 stays as precision and recall.** Off-label cases are a minority class,
+  so one combined accuracy figure can remain high while detection fails.
+  `unresolved_rate` accompanies the pair as an operational signal.
+- **Gate 14 carries its mode label.** Offline fixture latency is not a live
+  provider guarantee, and the difference is large.
 
-The report records policy, knowledge-snapshot, route, profile, model, prompt,
-registry, and code versions, so any regression traces to the exact change.
+The report records policy, knowledge snapshot, route, profile, model, prompt,
+registry, and code versions so a regression can be traced to the change that caused
+it.
 
-Current offline result: 44/44 matched, 0 dangerous false allows, `release_gate:
-pass`.
+### Recorded offline result
 
-## 4. Latency
+The final documented build recorded **`1113 passed, 1 skipped`**. The mock golden
+run matched **`44/44`** cases with **`0`** dangerous false allows, and reported
+`release_gate: pass` after all fifteen checks passed.
 
-| | Live provider | Offline fixtures |
-| --- | --- | --- |
-| p95 per case | 5.1 s – 19.7 s | ≈ 2 ms |
-| Average per case | 3.8 s – 9.8 s | ≈ 2 ms |
-| Slowest single case | up to 20.7 s | ≈ 3 ms |
+The end-to-end audit verification returned `ok: true`.
 
-Measured across seven full golden-set runs against a live provider on one host.
-The spread is provider variance, not code: the same commit produced p95 of 5.1 s
-and 18.3 s on different runs. Quote the **range**, not one good run.
+## 4. End-to-end coverage
 
-Two design consequences follow directly:
+The integration path exercises both public entries with the same shared controls:
 
-- Real-time feedback while typing cannot depend on the model. That is why the
-  deterministic layer at ≈ 2 ms carries the interactive path and the model runs
-  behind it.
-- A 20 s worst case needs a visible waiting state and a timeout that fails to human
-  review, which is what the provider-timeout path does.
+1. Submit clean content and receive a persisted check.
+2. Submit blocked content and verify that release remains unavailable.
+3. Guard safe AI input and receive an actor-bound session.
+4. Generate through the session and verify output passes through the output check.
+5. Verify the audit hash chain after checks, generation, review, and publication
+   events.
 
-A latency regression gate is therefore not asserted against a live run. The offline
-p95 is the stable regression signal; live runs measure accuracy and grounding.
+These paths are covered by automated integration tests. An operator can repeat the
+audit assertion at runtime through `GET /api/audit-trail/verify`.
 
-## 5. Defects only a real model exposed
+## 5. Latency
 
-Seven defects surfaced only once a real provider answered, because the offline
-fixtures never produced these response shapes. All seven are now regression-tested
-offline.
+Latency gates are reported with their execution mode. Mock mode measures local
+workflow overhead and must not be presented as provider latency. Live measurements
+must include provider queueing, generation, retries, and complete output checks.
 
-| # | Defect | Why it mattered |
-| --- | --- | --- |
-| 1 | Model returns the full field template with `null` values | Read downstream as "every label field contradicts the label", fabricating an off-label finding on compliant copy |
-| 2 | Model volunteers `missing_context` on clean on-label copy | Downgraded `allow` to `needs_info`: model prose moved a server decision |
-| 3 | Model prefixes prose before the JSON fence | Parsed as malformed, sending a good check to `FAILED_SAFE` for a cosmetic reason |
-| 4 | Model returns `{"refused": true}` with no error category | "I decline to assess this" was indistinguishable from "assessed, found nothing" |
-| 5 | Only evidence **ids** were sent, never the text | The model correctly refused to reason from facts it could not see, so off-label detection silently produced nothing |
-| 6 | Hedged, non-quantitative field values (`口服（推断）`, `dose: "一次"`) | Compared as factual claims, fabricating route and dose mismatches |
-| 7 | `unapproved_promotion` (S0, pattern-less) stacked onto comparative claims | Model output alone escalated S1 review to an S0 block, including on content that promotes nothing |
+The precheck gate measures deterministic editor feedback. The submit-path gate
+measures the complete check path, including audit write. Both are p95 measurements
+from the evaluator rather than informal timing observations.
 
-Defects 2 and 7 are the same class and the most important: a pattern-less rule
-reachable only from model output could set the gravest decision in the system. The
-engine now refuses to promote candidates for conditions the server determines from
-its own state, and keeps an uncorroborated S0 candidate as a finding at full
-severity while routing it to a human rather than letting it block. Neither change
-can turn a case into `allow`.
+## 6. Controlled baselines
 
-**The general lesson.** Offline fixtures validate the *workflow*; only a real model
-exercises the *contract*. Prompt wording alone did not hold finding types apart —
-defect 7 recurred after a prompt fix and needed a deterministic precedence rule in
-the policy engine. Instruction is not a control.
+The golden set and thresholds are versioned test assets. Changing either requires:
 
-## 6. Known baselines, pinned deliberately
+1. A recorded reason linked to a confirmed false positive or missed risk.
+2. A second-person confirmation before a candidate enters the golden set.
+3. A full mock evaluation and complete test run.
+4. Review of any threshold change as a separate release decision.
 
-**On-label dose wording collides with the contradict fixture.** Content stating the
-current label dose ("每天80mg口服") also matches an external contradicting study
-fixture, so retrieval returns both supporting and contradicting evidence and the
-engine reports `evidence_conflict` at S1 instead of allowing. G-43 records this as
-expected; the ordinary `normal_low_risk` cases use wording that does not collide,
-so the clean allow path is still exercised.
-
-Recorded as a baseline so it is never mistaken for a regression. The earlier
-masking-collision baseline (a redline keyword adjacent to an HCP title being
-partially masked) was **fixed** rather than accepted, because the same mechanism
-could remove adverse-event keywords — a missed-detection path, not a cosmetic
-quirk. G-44 now asserts the redline fires for the right reason.
+A failing safety gate is fixed in rules, retrieval, masking, authorization, or
+workflow. Re-labelling a dangerous allow as an expected result would make the metric
+pass while removing the control it exists to measure.
 
 ## 7. Change control
 
-Re-run the full suite and the evaluator whenever any of these change: policy
-bundles, prompts, model profiles or routes, knowledge fixtures or
-ingestion/retrieval, security controls, the workflow or policy engine or domain
-models, or the evaluator, golden set, and red-team tests themselves.
+Every report identifies the policy, evidence snapshot, route, profile, prompt,
+registry, and code versions. A release keeps the exact rule version used for past
+checks and never rewrites historical outcomes.
 
-A regression is: `matched_cases < total_cases`, `dangerous_false_allows > 0`, any
-gate failing, `release_gate` becoming `fail`, or any previously passing test
-failing.
+Before merging a change:
 
 ```text
-python -m pytest tests/evaluation/test_regression.py tests/security/test_red_team_cases.py -q
 python -m pytest -q
 python tests/evaluation/run_eval.py --mode mock --output artifacts/eval-report.json
-RUN_LIVE_LLM_TESTS=1 python -m pytest tests/contract/test_live_adapter.py -q
+node --check src/compliance_guard/web/app.js
+node --check src/compliance_guard/web/i18n.js
+git diff --check
 ```
 
-Golden-set metrics are demonstration targets, not a production performance
-commitment.
+The release report must have `matched_cases == total_cases`,
+`dangerous_false_allows == 0`, and `release_gate == "pass"`. The documentation test
+rejects stale API, workspace, stage, scope, and bilingual facts.
