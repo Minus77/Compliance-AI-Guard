@@ -171,11 +171,11 @@ def test_retrieval_gap_never_allows(app_services):
         tenant_id="TENANT-CN",
         content="完全不存在的化合物XQZ99的疗效主张",
         content_parts=[],
-        source="call_report",
+        source="customer_interaction_note",
         market="CN",
         language="zh-CN",
         product_id="PRODUCT-001",
-        channel="call_report",
+        channel="customer_interaction_note",
         received_at=datetime(2026, 8, 20, tzinfo=UTC),
         idempotency_key="idem-gap-1",
         extensions={

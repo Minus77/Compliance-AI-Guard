@@ -124,7 +124,7 @@ def _strip_hedge(value: str) -> tuple[str, str | None]:
 def _is_asserted(value: Any) -> bool:
     """True when the extraction actually claims something for this field.
 
-    Silence is not a contradiction. If a call report never mentions the dose,
+    Silence is not a contradiction. If content never mentions the dose,
     that is not an off-label dose claim -- it is simply a field the
     representative did not talk about. Comparing unasserted fields would turn
     every short, perfectly compliant note into an off-label finding, which is

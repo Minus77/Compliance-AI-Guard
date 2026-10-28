@@ -1094,7 +1094,7 @@ class Orchestrator:
             evidence_pack.query or request.content,
             received_at=request.received_at,
             product_id=request.product_id,
-            # In a call report the submitting representative is the reporter.
+            # In an interaction note the submitting contributor is the reporter.
             reporter_known=True,
             patient_entity_present=patient_entity,
         )

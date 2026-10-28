@@ -339,7 +339,7 @@ class LiveHttpAdapter:
         endpoint: LiveEndpoint,
     ) -> dict[str, Any]:
         # Untrusted text is fenced and labelled so a prompt-injection attempt in
-        # a call report reads as data. The deterministic injection scanner and
+        # business content reads as data. The deterministic injection scanner and
         # the server-side policy engine remain the real defence.
         user_content = json.dumps(
             {

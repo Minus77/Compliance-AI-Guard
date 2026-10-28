@@ -1,6 +1,6 @@
 """Case lifecycle beyond the first submission: notifications, revisions, appeals.
 
-Submission used to be the end of the road. A representative sent a call report and
+Submission used to be the end of the road. A contributor sent content and
 then had no list of what they sent, no word back when a reviewer decided something,
 no way to continue from a blocked draft, and no channel to disagree. Every one of
 those gaps pushes the same direction: write less, write blander, keep the

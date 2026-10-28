@@ -41,7 +41,7 @@ from compliance_guard.security.name_lexicon import find_mentions
 # Everything else was removed after a live check produced "医生以表示感谢。" for an
 # inducement sentence. Fixing that fragment would have exposed the deeper problem:
 # any mechanical rewrite of "赠送礼品给医生" has to change the *facts* -- turning a
-# gift into "provided product materials" is falsifying a call report, which is a
+# gift into "provided product materials" is falsifying source content, which is a
 # graver offence than the wording it was trying to fix. A compliance tool must
 # never draft a more compliant-looking version of events that did not happen.
 #
@@ -129,7 +129,7 @@ _GUIDANCE = {
     ),
     "off_label": (
         "请改用说明书批准的适应症表述。确实需要讨论说明书以外的用法时，"
-        "应走医学与合规复核，而不是直接写进拜访记录。"
+        "应走医学与合规复核，而不是直接写进业务内容。"
     ),
     "unapproved_promotion": (
         "请只描述已获批的产品与用法。未获批内容不能出现在对外记录里。"

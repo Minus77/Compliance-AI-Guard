@@ -93,3 +93,5 @@ def test_legacy_submission_uses_the_shared_check_service(client):
 
     assert response.status_code == 200
     assert any(finding["spans"] for finding in response.json()["findings"])
+    case_id = response.json()["case_id"]
+    assert client.app.state.cases[case_id]["submitted_by"] == "demo-author"

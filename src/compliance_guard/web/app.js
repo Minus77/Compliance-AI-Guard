@@ -22,7 +22,7 @@
   }
 
   // ---- shared state ------------------------------------------------------
-  var currentRole = document.getElementById("role").value || "field_rep";
+  var currentRole = document.getElementById("role").value || "author";
   var capabilities = {};        // from GET /api/permissions
   var publishedConfig = null;
   var draftPayload = null;
@@ -665,7 +665,7 @@
         mime_type: file.type || "",
         size_bytes: file.size || 0
       };
-      // Only metadata is sent. The binary never leaves the browser: a call-report
+      // Only metadata is sent. The binary never leaves the browser: an interaction
       // attachment can carry PHI and this demo keeps raw content client-side.
       api("/api/attachments", { method: "POST", body: JSON.stringify(payload) })
         .then(function (body) {
@@ -3239,7 +3239,7 @@
   // ---- my records --------------------------------------------------------
 
   /* Submitting used to be the end of the road. Work you cannot see is work you
-   * stop trusting, and a representative who does not trust the tool writes
+   * stop trusting, and an author who does not trust the tool writes
    * shorter notes. */
   function loadRecords(options) {
     var reset = options && options.reset;

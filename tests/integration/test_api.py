@@ -35,11 +35,11 @@ def test_check_case_never_returns_raw_pii(client):
 def test_case_detail_and_trace_endpoints(client):
     check = client.post("/api/cases/check", json=sample_request_json("off_label"))
     case_id = check.json()["case_id"]
-    detail = client.get(f"/api/cases/{case_id}", headers={"x-demo-role": "field_rep"})
+    detail = client.get(f"/api/cases/{case_id}", headers={"x-demo-role": "author"})
     assert detail.status_code == 200
     assert detail.json()["case_id"] == case_id
     assert "safe_view" in detail.json()
-    trace = client.get(f"/api/cases/{case_id}/trace", headers={"x-demo-role": "field_rep"})
+    trace = client.get(f"/api/cases/{case_id}/trace", headers={"x-demo-role": "author"})
     assert trace.status_code == 200
     tbody = trace.json()
     assert tbody["case_id"] == case_id

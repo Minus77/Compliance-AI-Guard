@@ -71,7 +71,7 @@
           <span class="demo-flag" data-i18n="header.demoOnly">仅演示模式</span>
         </span>
         <select id="role" name="x-demo-role" autocomplete="off">
-          <option value="field_rep" data-i18n="role.field_rep">医药代表</option>
+          <option value="author" data-i18n="role.author">内容作者</option>
           <option value="reviewer" data-i18n="role.reviewer">审核人</option>
           <option value="auditor" data-i18n="role.auditor">内部审计</option>
           <option value="architect" data-i18n="role.architect">架构师</option>
@@ -158,7 +158,7 @@
       <form id="check-form" class="check-form">
         <fieldset class="panel panel-source">
           <legend data-i18n="rep.sourceSection">内容来源</legend>
-          <p class="hint" data-i18n="rep.connectorHint">来源已插件化，可对接 Veeva CRM / Vault。</p>
+          <p class="hint" data-i18n="rep.connectorHint">来源已插件化，可对接通用内容源并按版本读取。</p>
           <div class="source-grid">
             <label class="fld" for="src-connector">
               <span class="fld-label" data-i18n="rep.connector">来源系统</span>
@@ -192,8 +192,8 @@
             <label class="fld" for="ctx-channel">
               <span class="fld-label" data-i18n="rep.channel">渠道</span>
               <select id="ctx-channel" name="channel">
-                <option value="call_report" data-i18n="channel.call_report">拜访记录</option>
-                <option value="med_comms" data-i18n="channel.med_comms">医学沟通</option>
+                <option value="customer_interaction_note" data-i18n="channel.customer_interaction_note">客户互动记录</option>
+                <option value="medical_information_request" data-i18n="channel.medical_information_request">医疗信息请求</option>
               </select>
             </label>
             <label class="fld" for="ctx-language">
@@ -220,7 +220,7 @@
           <p class="muted small" id="attach-empty" data-i18n="rep.attachEmpty">尚未添加附件。</p>
         </fieldset>
         <fieldset class="panel panel-narrative">
-          <legend data-i18n="rep.narrativeSection">拜访记录正文</legend>
+          <legend data-i18n="rep.narrativeSection">业务内容正文</legend>
 
           <!-- Draft recovery. Offered, never applied automatically: silently
                replacing what is on screen is its own kind of data loss. -->
@@ -236,7 +236,7 @@
           </div>
 
           <label class="fld fld-block" for="content">
-            <span class="fld-label" data-i18n="rep.contentLabel">拜访记录正文</span>
+            <span class="fld-label" data-i18n="rep.contentLabel">业务内容正文</span>
             <textarea id="content" name="content" rows="8" required
               aria-describedby="content-help content-error live-hints"
               data-i18n-placeholder="rep.contentPlaceholder"
@@ -407,8 +407,8 @@
           </div>
           <p class="hint" data-i18n="pv.scopeNote">本模块为演示用辅助判断。</p>
         </section>
-        <!-- Machine codes live here: an auditor needs the exact rule ids, a
-             representative should not have to decode S1 to know what to do. -->
+        <!-- Machine codes live here: an auditor needs the exact rule ids, an
+             author should not have to decode S1 to know what to do. -->
         <details class="disclosure" id="tech-details">
           <summary><span data-i18n="result.technical">技术详情（供审计核对）</span></summary>
           <div class="tech-grid" id="tech-grid"></div>
@@ -807,7 +807,7 @@
       <ol class="onboarding-list">
         <li>
           <strong data-i18n="onboarding.whatTitle">这个工具做什么</strong>
-          <p data-i18n="onboarding.whatBody">在拜访记录对外发出之前先检查一遍：涉及不良事件、个人信息、超说明书表述或合规红线时给出提示。原文完整保留，不会被删改。</p>
+          <p data-i18n="onboarding.whatBody">在业务内容对外发出之前先检查一遍：涉及不良事件、个人信息、超说明书表述或合规红线时给出提示。原文完整保留，不会被删改。</p>
         </li>
         <li>
           <strong data-i18n="onboarding.roleTitle">你的角色能做什么</strong>

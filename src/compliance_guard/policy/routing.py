@@ -65,7 +65,7 @@ class ReviewPlan(DomainModel):
 
 
 def default_raci() -> RaciMatrix:
-    """The code-controlled default RACI for the China call-report demo."""
+    """The code-controlled default RACI for the China content demo."""
     return RaciMatrix(
         entries=[
             RaciEntry(

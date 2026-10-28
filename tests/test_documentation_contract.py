@@ -259,3 +259,33 @@ def test_scope_limits_are_stated_in_both_readmes():
     assert "synthetic" in english.casefold()
     assert "不作任何声称" in chinese
     assert "合成" in chinese
+
+
+def test_repository_has_no_vendor_or_fixed_external_workflow_coupling():
+    """Product code, fixtures and docs use generic domain names throughout."""
+    forbidden = (
+        "".join(("vee", "va")),
+        " ".join(("vault", "medcomms")),
+        " ".join(("crm", "call", "report")),
+        "".join(("call", "_", "report")),
+    )
+    ignored_directories = {".git", ".pytest_cache", ".venv", "node_modules"}
+    suffixes = {".py", ".js", ".html", ".json", ".md", ".txt", ".jsonl"}
+    offenders = []
+
+    for path in _PROJECT_ROOT.rglob("*"):
+        if (
+            not path.is_file()
+            or path.suffix not in suffixes
+            or ignored_directories.intersection(path.parts)
+            or any(part.endswith(".egg-info") for part in path.parts)
+        ):
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore").casefold()
+        offenders.extend(
+            f"{path.relative_to(_PROJECT_ROOT)}: {term}"
+            for term in forbidden
+            if term in text
+        )
+
+    assert offenders == []

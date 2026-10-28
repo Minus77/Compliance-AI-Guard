@@ -33,7 +33,7 @@ def test_inducement_is_never_redrafted_into_a_cleaner_story():
 
     Repairing the fragment would have required turning "赠送礼品给医生" into
     something like "向医生提供了产品资料" — changing what *happened*. Falsifying a
-    call report is a graver offence than the wording it would be fixing, so the
+    source content is a graver offence than the wording it would be fixing, so the
     service refuses and explains instead.
     """
     result = _service().suggest(

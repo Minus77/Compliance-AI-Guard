@@ -64,7 +64,7 @@ _PATIENT_TERMS = ("患者", "病人", "受试者", "该患者", "患方")
 # existence of a token is used; its digest is never interpreted or recorded.
 _PATIENT_TOKEN_RE = re.compile(r"\[PATIENT_TKN_[0-9a-f]{16}\]")
 
-# Criterion 2: an identifiable reporter. In a call report the submitting
+# Criterion 2: an identifiable reporter. In an interaction note the submitting
 # representative is the reporter, so this is satisfied by provenance.
 _REPORTER_TERMS = ("医生", "医师", "护士", "药师", "患者本人", "家属", "代表")
 

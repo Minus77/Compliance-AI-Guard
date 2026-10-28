@@ -44,11 +44,11 @@ def _request(content_parts=None) -> CheckCaseRequest:
         tenant_id="TENANT-CN",
         content="synthetic content",
         content_parts=content_parts or [],
-        source="call_report",
+        source="customer_interaction_note",
         market="CN",
         language="zh-CN",
         product_id="PRODUCT-001",
-        channel="call_report",
+        channel="customer_interaction_note",
         received_at=datetime(2026, 1, 1, tzinfo=UTC),
         idempotency_key="idem-route-1",
     )

@@ -278,7 +278,7 @@ def test_ui_offers_exactly_the_four_demo_roles(client):
     html = client.get("/").text
     select = html.split('id="role"', 1)[1].split("</select>", 1)[0]
     offered = re.findall(r'value="([a-z_]+)"', select)
-    assert offered == ["field_rep", "reviewer", "auditor", "architect"]
+    assert offered == ["author", "reviewer", "auditor", "architect"]
 
 
 def test_server_still_recognizes_the_wider_pharma_role_matrix(client):

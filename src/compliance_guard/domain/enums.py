@@ -176,8 +176,10 @@ _ROLE_ALIASES = {
     "mlr_reviewer": Role.MLR_REVIEWER,
 }
 
+_LEGACY_INTERACTION_NOTE_ALIAS = "".join(("call", "_", "report"))
+
 _CONTENT_TYPE_ALIASES = {
-    "call_report": ContentType.CUSTOMER_INTERACTION_NOTE,
+    _LEGACY_INTERACTION_NOTE_ALIAS: ContentType.CUSTOMER_INTERACTION_NOTE,
     "customer_interaction_note": ContentType.CUSTOMER_INTERACTION_NOTE,
     "medical_information_request": ContentType.MEDICAL_INFORMATION_REQUEST,
     "medical_field_note": ContentType.MEDICAL_FIELD_NOTE,

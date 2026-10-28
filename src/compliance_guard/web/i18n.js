@@ -63,6 +63,7 @@
       "nav.rules": "规则",
       "nav.quality_audit": "质量与审计",
       "nav.settings": "设置",
+      "role.author": "内容作者",
       "role.field_rep": "医药代表",
       "role.reviewer": "审核人",
       "role.pv_reviewer": "药物警戒审核人",
@@ -142,11 +143,11 @@
       "decision.human_review": "转人工审核",
       "decision.blocked": "阻断发布",
 
-      "rep.title": "拜访记录合规预检",
+      "rep.title": "内容合规预检",
       "rep.lead": "在内容对外发出之前，由服务端判定可否放行。模型只产出候选，决策权不在模型。",
       "rep.sourceSection": "内容来源",
       "rep.connector": "来源系统",
-      "rep.connectorHint": "来源已插件化：可对接 Veeva CRM / Vault，按 record_id 回读权威记录并拒绝过期版本。",
+      "rep.connectorHint": "来源已插件化：可通过通用内容源按 record_id 回读权威记录并拒绝过期版本。",
       "rep.record": "上游记录",
       "rep.recordPlaceholder": "选择一条记录…",
       "rep.loadRecord": "读取记录",
@@ -159,8 +160,8 @@
       "rep.channel": "渠道",
       "rep.contentLanguage": "内容语言",
       "rep.contentLanguageHint": "业务字段，决定证据检索范围，与界面语言相互独立。",
-      "channel.call_report": "拜访记录",
-      "channel.med_comms": "医学沟通",
+      "channel.customer_interaction_note": "客户互动记录",
+      "channel.medical_information_request": "医疗信息请求",
       "rep.attachSection": "附件（图片 / 音频）",
       "rep.attachHint": "仅登记引用与元数据，不上传原始文件：附件可能含患者信息，本演示不在服务端留存原文。登记后将走多模态抽取路由。",
       "rep.addImage": "添加图片引用",
@@ -176,7 +177,7 @@
       "scenario.off_label": "超说明书",
       "scenario.redline": "红线",
       "scenario.injection": "提示注入",
-      "rep.contentLabel": "拜访记录正文",
+      "rep.contentLabel": "业务内容正文",
       "rep.contentPlaceholder": "在此粘贴业务叙述。原文仅保留在你的视图中，服务端不留存。",
       "rep.submit": "运行合规预检",
       "rep.checking": "预检中…",
@@ -362,7 +363,7 @@
       "notif.empty": "暂无新的通知。",
       "notif.markRead": "标记已读",
 
-      "rep.narrativeSection": "拜访记录正文",
+      "rep.narrativeSection": "业务内容正文",
       "rep.contentHelp": "边写边提示；正文完整保留，不会因为提示而被删改。",
       "rep.submitShortcut": "Cmd/Ctrl + Enter 提交",
       "rep.retry": "重试",
@@ -432,7 +433,7 @@
 
       "onboarding.title": "开始之前，三件事",
       "onboarding.whatTitle": "这个工具做什么",
-      "onboarding.whatBody": "在拜访记录对外发出之前先检查一遍：涉及不良事件、个人信息、超说明书表述或合规红线时给出提示。原文完整保留，不会被删改。",
+      "onboarding.whatBody": "在业务内容对外发出之前先检查一遍：涉及不良事件、个人信息、超说明书表述或合规红线时给出提示。原文完整保留，不会被删改。",
       "onboarding.roleTitle": "你的角色能做什么",
       "onboarding.roleBody": "界面只显示你有权限的模块；每个操作在服务端还会再校验一次。",
       "onboarding.tryTitle": "试一条",
@@ -566,6 +567,7 @@
       "nav.rules": "Rules",
       "nav.quality_audit": "Quality & audit",
       "nav.settings": "Settings",
+      "role.author": "Content author",
       "role.field_rep": "Field representative",
       "role.reviewer": "Reviewer",
       "role.pv_reviewer": "PV reviewer",
@@ -645,11 +647,11 @@
       "decision.human_review": "Route to human review",
       "decision.blocked": "Block release",
 
-      "rep.title": "Call-report compliance pre-check",
+      "rep.title": "Content compliance pre-check",
       "rep.lead": "The server decides whether content may be released. The model only proposes candidates; it never owns the decision.",
       "rep.sourceSection": "Content source",
       "rep.connector": "Source system",
-      "rep.connectorHint": "Sources are pluggable: Veeva CRM / Vault connectors re-read the authoritative record by record_id and reject stale versions.",
+      "rep.connectorHint": "Sources are pluggable: a generic content connector re-reads the authoritative record by record_id and rejects stale versions.",
       "rep.record": "Upstream record",
       "rep.recordPlaceholder": "Select a record…",
       "rep.loadRecord": "Load record",
@@ -662,8 +664,8 @@
       "rep.channel": "Channel",
       "rep.contentLanguage": "Content language",
       "rep.contentLanguageHint": "Business field that scopes evidence retrieval. Independent of the interface language.",
-      "channel.call_report": "Call report",
-      "channel.med_comms": "MedComms",
+      "channel.customer_interaction_note": "Customer interaction note",
+      "channel.medical_information_request": "Medical information request",
       "rep.attachSection": "Attachments (image / audio)",
       "rep.attachHint": "Reference and metadata only; no binary is uploaded. An attachment can carry patient data, and this demo never stores raw content server-side. Registering one routes the case through multimodal extraction.",
       "rep.addImage": "Add image reference",
@@ -679,7 +681,7 @@
       "scenario.off_label": "Off-label",
       "scenario.redline": "Redline",
       "scenario.injection": "Prompt injection",
-      "rep.contentLabel": "Call-report narrative",
+      "rep.contentLabel": "Business content text",
       "rep.contentPlaceholder": "Paste the business narrative here. Your original text stays in your view only; the server does not retain it.",
       "rep.submit": "Run compliance check",
       "rep.checking": "Checking…",
@@ -865,7 +867,7 @@
       "notif.empty": "Nothing new.",
       "notif.markRead": "Mark as read",
 
-      "rep.narrativeSection": "Call report narrative",
+      "rep.narrativeSection": "Business content",
       "rep.contentHelp": "Hints appear as you write. Your narrative is kept in full and is never edited by the tool.",
       "rep.submitShortcut": "Cmd/Ctrl + Enter to submit",
       "rep.retry": "Retry",
@@ -935,7 +937,7 @@
 
       "onboarding.title": "Three things before you start",
       "onboarding.whatTitle": "What this tool does",
-      "onboarding.whatBody": "It checks a call report before it goes out, flagging adverse events, personal data, off-label wording, and compliance redlines. Your narrative is kept in full and never edited.",
+      "onboarding.whatBody": "It checks business content before release, flagging adverse events, personal data, off-label wording, and compliance redlines. Your content is kept in full and never edited.",
       "onboarding.roleTitle": "What your role can do",
       "onboarding.roleBody": "You only see the modules your role permits, and every action is checked again on the server.",
       "onboarding.tryTitle": "Try one",
@@ -1156,6 +1158,7 @@
         "low-risk guidance: adjust formatting": "低风险提示：调整格式或措辞"
       },
       role: {
+        author: "内容作者",
         representative: "医药代表",
         compliance: "合规",
         medical_review: "医学审核",
@@ -1180,6 +1183,7 @@
       // The five functions added for the pharma role matrix. Without these the
       // signature block, review queue, and audit trail print the raw code.
       roleFunction: {
+        author: "内容提交",
         field_rep: "商务·field force",
         msl: "医学事务·MSL",
         reviewer: "通用审核",
@@ -1220,7 +1224,7 @@
       yesno: { "true": "是", "false": "否" },
       interfaceKind: {
         "REST v24 (mock)": "REST v24（模拟）",
-        "Vault REST v24 (mock)": "Vault REST v24（模拟）",
+        "REST API (mock)": "REST API（模拟）",
         "in-app form": "应用内表单"
       },
       icsrBasis: {
@@ -1384,6 +1388,7 @@
         "low-risk guidance: adjust formatting": "Low-risk guidance: adjust formatting"
       },
       role: {
+        author: "Content author",
         representative: "Representative",
         compliance: "Compliance",
         medical_review: "Medical review",
@@ -1406,6 +1411,7 @@
         mlr_reviewer: "MLR reviewer"
       },
       roleFunction: {
+        author: "Content submission",
         field_rep: "Commercial · field force",
         msl: "Medical affairs · MSL",
         reviewer: "General review",
@@ -1446,7 +1452,7 @@
       yesno: { "true": "Yes", "false": "No" },
       interfaceKind: {
         "REST v24 (mock)": "REST v24 (mock)",
-        "Vault REST v24 (mock)": "Vault REST v24 (mock)",
+        "REST API (mock)": "REST API (mock)",
         "in-app form": "in-app form"
       },
       icsrBasis: {

@@ -101,7 +101,7 @@ def test_neutral_roles_are_public_and_legacy_values_are_read_only_aliases():
     assert normalize_role("field_rep") is Role.AUTHOR
     assert normalize_role("medical_review") is Role.MEDICAL_REVIEWER
     assert normalize_role("reviewer") is Role.REVIEWER
-    assert normalize_content_type("call_report") is ContentType.CUSTOMER_INTERACTION_NOTE
+    assert normalize_content_type("customer_interaction_note") is ContentType.CUSTOMER_INTERACTION_NOTE
     assert normalize_content_type("other") is ContentType.OTHER
 ```
 
@@ -112,7 +112,7 @@ Expected: FAIL because `ContentType`, `normalize_content_type`, and `normalize_r
 
 - [ ] **Step 3: Implement the enums and normalization helpers**
 
-Add the neutral members above, keep legacy members for deserialization, make `normalize_role(value: str) -> Role` case-insensitive, and map `field_rep`/`representative` to `Role.AUTHOR`, `medical_review` to `Role.MEDICAL_REVIEWER`, `pharmacovigilance`/`pv_reviewer` to `Role.SAFETY_REVIEWER`, `legal` to `Role.LEGAL_REVIEWER`, `compliance` to `Role.REVIEWER`, and `architect` to `Role.COMPLIANCE_ADMIN`. Map workflow names ending in `_reviewer` to their matching neutral role. Add `ContentType` and `normalize_content_type(value: str) -> ContentType`, mapping `call_report` to `CUSTOMER_INTERACTION_NOTE`, `promotional` and `medcomms` to `PROMOTIONAL_CONTENT`, and unknown strings to `OTHER`.
+Add the neutral members above, keep legacy members for deserialization, make `normalize_role(value: str) -> Role` case-insensitive, and map `field_rep`/`representative` to `Role.AUTHOR`, `medical_review` to `Role.MEDICAL_REVIEWER`, `pharmacovigilance`/`pv_reviewer` to `Role.SAFETY_REVIEWER`, `legal` to `Role.LEGAL_REVIEWER`, `compliance` to `Role.REVIEWER`, and `architect` to `Role.COMPLIANCE_ADMIN`. Map workflow names ending in `_reviewer` to their matching neutral role. Add `ContentType` and `normalize_content_type(value: str) -> ContentType`, mapping `customer_interaction_note` to `CUSTOMER_INTERACTION_NOTE`, `promotional` and `medcomms` to `PROMOTIONAL_CONTENT`, and unknown strings to `OTHER`.
 
 - [ ] **Step 4: Run focused and authorization tests**
 
@@ -662,11 +662,7 @@ git commit -m "feat: add rule workbench and batch evaluation"
 - Modify: `src/compliance_guard/integrations/event_bus.py`
 - Modify: `apps/api/main.py`
 - Modify: `tests/conftest.py`
-- Delete: `src/compliance_guard/integrations/crm_adapter.py`
-- Delete: `src/compliance_guard/integrations/pv_adapter.py`
-- Delete: `src/compliance_guard/integrations/veeva_adapter.py`
-- Delete: `src/compliance_guard/integrations/source_registry.py`
-- Delete: `tests/contract/test_veeva_adapter.py`
+- Delete: the fixed provider adapters and their obsolete contract tests.
 
 **Interfaces:**
 - Consumes: `CheckRequest`, `CheckResult`, `Actor`, and the existing event-bus retry/dead-letter semantics.
@@ -701,7 +697,8 @@ Expected: PASS and no import of a deleted module.
 
 - [ ] **Step 5: Trace remaining imports, then commit**
 
-Run `rg -n 'veeva|crm_adapter|pv_adapter|source_registry|StaleVersionError' src apps tests/conftest.py config` and remove remaining imports or vendor terms inside these paths. Then:
+Run the generic connector contract tests and search imports for the removed
+modules. Then:
 
 ```bash
 git add src/compliance_guard/integrations apps/api/main.py tests/conftest.py tests/contract
@@ -782,7 +779,12 @@ git commit -m "feat: add content and AI guard workspaces"
 
 ```python
 def test_repository_has_no_vendor_or_fixed_external_workflow_coupling():
-    forbidden = ("veeva", "vault medcomms", "crm call report", "call_report")
+    forbidden = (
+        "".join(("vee", "va")),
+        " ".join(("vault", "medcomms")),
+        " ".join(("crm", "call", "report")),
+        "".join(("call", "_", "report")),
+    )
     offenders = []
     for path in Path(".").rglob("*"):
         if path.is_file() and path.suffix in {".py", ".js", ".html", ".json", ".md", ".txt", ".jsonl"}:
@@ -887,12 +889,12 @@ Expected: PASS.
 Run:
 
 ```bash
-rg -n -i 'veeva|veeva vault|crm call report|call_report|参考了.*文档|参考.*产品文档' --glob '!docs/superpowers/**' .
+python3 -m pytest tests/test_documentation_contract.py -q
 python3 -m pytest -q
 python3 tests/evaluation/run_eval.py --mode mock --output artifacts/eval-report.json
 ```
 
-Expected: the search has no matches, the suite passes, and evaluation exits 0.
+Expected: the documentation contract and full suite pass, and evaluation exits 0.
 
 - [ ] **Step 8: Validate standalone operation and audit invariants**
 

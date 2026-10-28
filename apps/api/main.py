@@ -17,7 +17,7 @@ integration can replace.
 
 Role capabilities, once identity is established:
 
-- Field representatives can submit cases and read their safe result.
+- Authors can submit cases and read their safe result.
 - Reviewers can read evidence, review tasks, and decide.
 - Admins/architects can draft, test, publish, and roll back model policy.
 
@@ -25,7 +25,7 @@ Security invariants enforced here:
 
 - Errors are structured and never include raw PII or secrets; validation error
   ``input`` values are stripped before returning.
-- The representative view receives only safe spans and tokens; raw content is
+- The author view receives only safe spans and tokens; raw content is
   never stored server-side and never returned.
 - ``credential_ref`` values are masked in every config response; the registry
   rejects plaintext secrets at the source.
@@ -518,8 +518,9 @@ def _actor_from_header(auth: AuthorizationService, header: str | None) -> Actor:
     raise ApiError("unauthenticated", 401, "sign in at /api/auth/login")
 
 
-def _default_field_rep() -> Actor:
-    return AuthorizationService.actor_from_header("field_rep")
+def _default_author() -> Actor:
+    """The neutral identity used by an anonymous demo submission."""
+    return AuthorizationService.actor_from_header("author")
 
 
 def _require_config_actor(auth: AuthorizationService, header: str | None) -> Actor:
@@ -556,11 +557,13 @@ def _require_rule_manager(auth: AuthorizationService, header: str | None) -> Act
 
 
 def _require_owner_scope(actor: Actor, record: dict[str, Any]) -> None:
-    """Field representatives may only read records they submitted.
+    """Authors may only read records they submitted.
 
-    Reviewer/admin roles pass through and may read any case.
+    Legacy representative roles keep the same owner boundary. Reviewer/admin
+    roles pass through and may read any case.
     """
-    if actor.role is Role.FIELD_REP and record.get("submitted_by") != actor.actor_id:
+    author_roles = {Role.AUTHOR, Role.FIELD_REP, Role.REPRESENTATIVE}
+    if actor.role in author_roles and record.get("submitted_by") != actor.actor_id:
         raise PermissionError(f"case read denied for role {actor.role.value!r}")
 
 
@@ -613,7 +616,7 @@ class PrecheckPayload(BaseModel):
     market: str = "CN"
     language: str = "zh-CN"
     product_id: str = ""
-    source: str = "call_report"
+    source: str = "customer_interaction_note"
     content_type: str = "customer_interaction_note"
     content_subtype: str = ""
     therapeutic_area: str = ""
@@ -695,7 +698,7 @@ class AttachmentPayload(BaseModel):
     """Register an image/audio reference as a content part.
 
     Only metadata is accepted. The binary is never uploaded or stored: a
-    call-report attachment can carry PHI, and this demo's invariant is that raw
+    business-content attachment can carry PHI, and this demo's invariant is that raw
     content never lands server-side. The returned ``mock://`` ref is what the
     multimodal extraction route would dereference in a real deployment.
     """
@@ -1078,7 +1081,7 @@ def create_app(services: Any | None = None) -> FastAPI:
         if request.state.session is not None or x_demo_role:
             actor = _actor_from_header(services.auth, x_demo_role)
         elif demo_mode_enabled():
-            actor = _default_field_rep()
+            actor = _default_author()
         else:
             raise ApiError("unauthenticated", 401, "sign in at /api/auth/login")
         try:
@@ -1243,17 +1246,18 @@ def create_app(services: Any | None = None) -> FastAPI:
         """List submitted cases, newest first.
 
         Submitting used to be the end of the road: no list, no way to look back at
-        what you sent. Work you cannot see is work you stop trusting, and a
-        representative who does not trust the tool writes shorter notes.
+        what you sent. Work you cannot see is work you stop trusting, and an
+        author who does not trust the tool writes shorter notes.
 
-        ``scope=all`` is *narrowed* rather than refused for a field representative.
+        ``scope=all`` is *narrowed* rather than refused for an author.
         Returning an error would tell them the wider set exists; returning their own
         records answers the question they can legitimately ask.
         """
         actor = _require_case_view(services.auth, x_demo_role)
         records = list(request.app.state.cases.values())
 
-        if actor.role is Role.FIELD_REP or scope == "mine":
+        author_roles = {Role.AUTHOR, Role.FIELD_REP, Role.REPRESENTATIVE}
+        if actor.role in author_roles or scope == "mine":
             records = [r for r in records if r.get("submitted_by") == actor.actor_id]
         if decision:
             wanted = str(decision).strip().casefold()
@@ -1298,7 +1302,7 @@ def create_app(services: Any | None = None) -> FastAPI:
                 }
             )
         return {
-            "scope": "mine" if (actor.role is Role.FIELD_REP or scope == "mine") else "all",
+            "scope": "mine" if (actor.role in author_roles or scope == "mine") else "all",
             "count": len(rows),
             "total": len(records),
             "cases": rows,
@@ -1390,7 +1394,7 @@ def create_app(services: Any | None = None) -> FastAPI:
         if request.state.session is not None or x_demo_role:
             actor = _actor_from_header(services.auth, x_demo_role)
         elif demo_mode_enabled():
-            actor = _default_field_rep()
+            actor = _default_author()
         else:
             raise ApiError("unauthenticated", 401, "sign in at /api/auth/login")
         response = services.checks.submit_case(payload, actor)
@@ -1451,13 +1455,13 @@ def create_app(services: Any | None = None) -> FastAPI:
             tenant_id=parent.get("tenant_id") or "TENANT-CN",
             content=payload.content,
             content_parts=[],
-            source=str(parent.get("source") or "call_report"),
+            source=str(parent.get("source") or "customer_interaction_note"),
             source_record_id=str(parent.get("source_record_id") or f"SR-{case_id}"),
             source_version="v1",
             market=str(parent_body.get("market") or "CN"),
             language=str(parent_body.get("language") or "zh-CN"),
             product_id=str((parent_body.get("product") or {}).get("product_id") or ""),
-            channel="call_report",
+            channel="customer_interaction_note",
             received_at=datetime.now(UTC),
             idempotency_key=f"idem-revision-{uuid.uuid4().hex[:12]}",
             extensions={

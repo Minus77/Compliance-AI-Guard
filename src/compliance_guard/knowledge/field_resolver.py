@@ -34,7 +34,7 @@ from compliance_guard.domain.models import DomainModel
 
 from .indication_resolver import IndicationMatch, IndicationResolver
 
-# Patterns cover the shapes a call report actually uses. Each maps a surface form
+# Patterns cover the shapes business content actually uses. Each maps a surface form
 # to the canonical vocabulary the label facts are written in, so comparison stays
 # a string equality check on normalised values.
 _POPULATION_TERMS = (

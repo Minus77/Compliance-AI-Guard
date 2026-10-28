@@ -20,7 +20,7 @@ def test_reviewer_can_report_a_false_positive(client):
     case_id = _submit(client)
     response = client.post(
         f"/api/cases/{case_id}/feedback",
-        json={"kind": "false_positive", "reason": "常规拜访记录被误判"},
+        json={"kind": "false_positive", "reason": "常规业务内容被误判"},
         headers={"x-demo-role": "compliance_admin"},
     )
     assert response.status_code == 200

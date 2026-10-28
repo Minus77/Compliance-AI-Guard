@@ -44,8 +44,8 @@ def case_for(text):
         market="CN",
         language="zh-CN",
         product_id=CN_PRODUCT,
-        channel="call_report",
-        source="call_report",
+        channel="customer_interaction_note",
+        source="customer_interaction_note",
         source_version="v1",
     )
 
