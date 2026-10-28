@@ -53,7 +53,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from compliance_guard.audit.ledger import AuditLedger
+from compliance_guard.audit.ledger import AuditLedger, AuditWriteError
 from compliance_guard.audit.metrics import Metrics
 from compliance_guard.audit.trace import Tracer
 from compliance_guard.domain.enums import Role, Severity
@@ -195,12 +195,14 @@ def _production_services() -> _Services:
         precheck=precheck,
         orchestrator=orchestrator,
         policy_store=policy_store,
+        ledger=ledger,
     )
     conversations = ConversationGuard(
         checks=checks,
         store=ConversationStore(),
         policy_store=policy_store,
         gateway=gateway,
+        ledger=ledger,
     )
     return _Services(
         gateway=gateway,
@@ -380,6 +382,16 @@ def _register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(KeyError)
     async def _on_key_error(request: Request, exc: KeyError) -> JSONResponse:
         return JSONResponse(status_code=404, content=_error_body("not_found", "resource not found"))
+
+    @app.exception_handler(AuditWriteError)
+    async def _on_audit_write_error(request: Request, exc: AuditWriteError) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content=_error_body(
+                "audit_unavailable",
+                "the compliance record could not be stored; content was not released",
+            ),
+        )
 
     @app.exception_handler(ValueError)
     async def _on_value_error(request: Request, exc: ValueError) -> JSONResponse:

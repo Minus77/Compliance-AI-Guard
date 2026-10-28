@@ -9,8 +9,10 @@ from typing import Any, Callable
 
 from pydantic import Field
 
+from compliance_guard.audit.ledger import AuditLedger, AuditWriteError
+from compliance_guard.audit.privacy import privacy_safe_audit_payload
 from compliance_guard.domain.enums import ContentType, Decision, Entrypoint, Severity
-from compliance_guard.domain.models import Actor, DomainModel
+from compliance_guard.domain.models import Actor, AuditEvent, DomainModel
 from compliance_guard.workflow.checks import (
     CheckFinding,
     CheckRequest,
@@ -164,11 +166,13 @@ class ConversationGuard:
         store: ConversationStore,
         policy_store,
         gateway=None,
+        ledger: AuditLedger | None = None,
     ) -> None:
         self._checks = checks
         self._store = store
         self._policy_store = policy_store
         self._gateway = gateway
+        self._ledger = ledger
 
     def guard_input(self, request: GuardInputRequest, actor: Actor) -> GuardInputResult:
         if actor.tenant_id and actor.tenant_id != request.tenant_id:
@@ -314,6 +318,10 @@ class ConversationGuard:
                 and all(finding.allow_publish for finding in findings.findings)
             )
             if not may_publish:
+                audited = findings.model_copy(
+                    update={"check_id": f"output-{uuid.uuid4().hex}", "status": "output_withdrawn"}
+                )
+                self._audit_output(conversation_id, audited)
                 return GenerationResult(
                     conversation_id=conversation_id,
                     state="output_withdrawn",
@@ -321,6 +329,10 @@ class ConversationGuard:
                     model_called=True,
                     withdrawn=bool(candidate),
                 )
+            audited = findings.model_copy(
+                update={"check_id": f"output-{uuid.uuid4().hex}", "status": "published"}
+            )
+            self._audit_output(conversation_id, audited)
             return GenerationResult(
                 conversation_id=conversation_id,
                 state="published",
@@ -361,6 +373,33 @@ class ConversationGuard:
             ),
             entrypoint=Entrypoint.OUTPUT,
         )
+
+    def _audit_output(self, conversation_id: str, result: CheckResult) -> None:
+        if self._ledger is None:
+            return
+        event = AuditEvent(
+            event_id=f"audit-{uuid.uuid4().hex}",
+            case_id=conversation_id,
+            trace_id=f"trace-{uuid.uuid4().hex}",
+            event_type="conversation_output_checked",
+            occurred_at=datetime.now(UTC),
+            payload={
+                **privacy_safe_audit_payload(
+                    result,
+                    Entrypoint.OUTPUT,
+                    model_status="called",
+                ),
+                "component": "conversation.output_guard",
+            },
+            configuration_versions={
+                "policy": result.policy_version,
+                "content": result.content_version,
+            },
+        )
+        try:
+            self._ledger.append(event)
+        except OSError as error:
+            raise AuditWriteError("audit ledger write failed") from error
 
     @staticmethod
     def _safe_findings(findings: list[CheckFinding]) -> list[CheckFinding]:

@@ -9,6 +9,8 @@ from typing import Any
 
 from pydantic import Field, field_validator
 
+from compliance_guard.audit.ledger import AuditLedger, AuditWriteError
+from compliance_guard.audit.privacy import privacy_safe_audit_payload
 from compliance_guard.domain.enums import (
     ContentType,
     Decision,
@@ -18,6 +20,7 @@ from compliance_guard.domain.enums import (
 )
 from compliance_guard.domain.models import (
     Actor,
+    AuditEvent,
     CharacterSpan,
     CheckCaseRequest,
     CheckCaseResponse,
@@ -101,10 +104,12 @@ class CheckService:
         precheck: PrecheckService,
         orchestrator,
         policy_store: PolicyBundleStore,
+        ledger: AuditLedger | None = None,
     ) -> None:
         self._precheck = precheck
         self._orchestrator = orchestrator
         self._policy_store = policy_store
+        self._ledger = ledger
         self._records: dict[str, tuple[CheckRequest, CheckResult, CheckCaseResponse | None]] = {}
 
     @staticmethod
@@ -220,8 +225,41 @@ class CheckService:
             model_called=True,
             status=response.status.value,
         )
+        self._record_result(response.case_id, response.trace_id, result)
         self._records[response.case_id] = (request.model_copy(deep=True), result, response)
         return result
+
+    def _record_result(
+        self,
+        case_id: str,
+        trace_id: str,
+        result: CheckResult,
+    ) -> None:
+        if self._ledger is None:
+            return
+        event = AuditEvent(
+            event_id=f"audit-{uuid.uuid4().hex}",
+            case_id=case_id,
+            trace_id=trace_id,
+            event_type="content_check_completed",
+            occurred_at=datetime.now(UTC),
+            payload={
+                **privacy_safe_audit_payload(
+                    result,
+                    Entrypoint.CONTENT,
+                    model_status="called" if result.model_called else "not_called",
+                ),
+                "component": "content.check",
+            },
+            configuration_versions={
+                "policy": result.policy_version,
+                "content": result.content_version,
+            },
+        )
+        try:
+            self._ledger.append(event)
+        except OSError as error:
+            raise AuditWriteError("audit ledger write failed") from error
 
     def submit_case(self, request: CheckCaseRequest, actor: Actor) -> CheckCaseResponse:
         if actor.tenant_id and actor.tenant_id != request.tenant_id:

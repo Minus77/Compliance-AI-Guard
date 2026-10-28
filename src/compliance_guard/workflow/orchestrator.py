@@ -30,6 +30,7 @@ from compliance_guard.agents.extractor import ExtractorAgent
 from compliance_guard.agents.icsr_assessment import assess_icsr
 from compliance_guard.agents.icsr_followup import build_followup_form
 from compliance_guard.agents.rewrite import RewriteService
+from compliance_guard.audit.ledger import AuditWriteError
 from compliance_guard.domain.enums import (
     CaseState,
     Decision,
@@ -251,7 +252,10 @@ class Orchestrator:
             configuration_versions=versions or {},
         )
         if self._ledger is not None:
-            return self._ledger.append(event)
+            try:
+                return self._ledger.append(event)
+            except OSError as error:
+                raise AuditWriteError("audit ledger write failed") from error
         return event
 
     def _advance(
@@ -555,16 +559,20 @@ class Orchestrator:
                     },
                 )
             return response
+        except AuditWriteError:
+            # No response may claim completion when its release record could not
+            # be durably appended. The API maps this to a safe 503.
+            raise
         except Exception as exc:  # noqa: BLE001 - unsafe errors must fail safe
             return self._handle_unsafe_error(case_id, trace_id, request, exc)
 
     def replay_case(self, case_id: str, knowledge_snapshot_id: str, policy_version: str) -> ReplayResult:
         """Replay a completed case using its recorded immutable snapshot IDs.
 
-        Replay re-derives the evidence snapshot from recorded query+filters,
-        loads the recorded policy version, and reuses the recorded decision
-        metadata. It never calls the model gateway and never performs an
-        external write.
+        Replay verifies the recorded evidence snapshot and policy identifiers,
+        then reuses the recorded decision metadata. The ledger intentionally
+        retains no narrative query, so replay never needs the source text. It
+        never calls the model gateway and never performs an external write.
         """
         if self._ledger is None:
             raise RuntimeError("replay requires an audit ledger")
@@ -573,10 +581,9 @@ class Orchestrator:
         if finalized is None:
             raise KeyError(f"no finalized record for case {case_id!r}")
         payload = finalized.payload or {}
-        filters = KnowledgeFilter(**payload.get("filters", {}))
-        query = payload.get("query", "")
-        replayed_pack = self._retriever.search_evidence(query, filters)
-        snapshot_consistent = replayed_pack.snapshot_id == knowledge_snapshot_id
+        snapshot_consistent = (
+            payload.get("knowledge_snapshot_id") == knowledge_snapshot_id
+        )
         bundle = self._policy_store.load(policy_version)
         versions = finalized.configuration_versions or {}
         return ReplayResult(
@@ -824,7 +831,6 @@ class Orchestrator:
                 f"{','.join(policy_result.rule_ids)}"
             ),
             "knowledge_snapshot_id": evidence_pack.snapshot_id,
-            "query": query,
             "filters": filters.model_dump(mode="json"),
             "decision": policy_result.decision.value,
             "severity": policy_result.severity.value,
@@ -1182,7 +1188,7 @@ class Orchestrator:
             None,
             None,
             "orchestrator.safety",
-            payload={"error": type(exc).__name__, "message": str(exc)},
+            payload={"error": type(exc).__name__},
         )
         if self._metrics is not None:
             self._metrics.increment("unsafe_errors")

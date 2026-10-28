@@ -114,12 +114,14 @@ class AppServices:
             precheck=self.precheck,
             orchestrator=self.orchestrator,
             policy_store=policy_store,
+            ledger=self.ledger,
         )
         self.conversations = ConversationGuard(
             checks=self.checks,
             store=ConversationStore(),
             policy_store=policy_store,
             gateway=gateway,
+            ledger=self.ledger,
         )
 
     def with_gateway(self, gateway):

@@ -24,8 +24,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
+from datetime import UTC
 from pathlib import Path
 
+from compliance_guard.audit.privacy import Tombstone
 from compliance_guard.domain.models import AuditEvent, DomainModel
 from compliance_guard.runtime_paths import audit_ledger_path
 
@@ -56,6 +59,10 @@ class ChainVerification(DomainModel):
     reason: str = ""
     legacy_entries: int = 0
     note: str = ""
+
+
+class AuditWriteError(RuntimeError):
+    """The audit record could not be durably appended."""
 
 
 class AuditLedger:
@@ -117,12 +124,41 @@ class AuditLedger:
         linked = linked.model_copy(
             update={"entry_hash": self.compute_entry_hash(prev_hash, linked)}
         )
+        try:
+            with self._path.open("a", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        linked.model_dump(mode="json"),
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                    + "\n"
+                )
+        except OSError as error:
+            # A failed write must not leave an event that exists only in memory:
+            # callers could otherwise release content while the durable trail is
+            # missing the record that authorized the release.
+            raise AuditWriteError("audit ledger write failed") from error
         self._events.append(linked)
-        with self._path.open("a", encoding="utf-8") as handle:
-            handle.write(
-                json.dumps(linked.model_dump(mode="json"), ensure_ascii=False, sort_keys=True) + "\n"
-            )
         return linked
+
+    def append_tombstone(self, tombstone: Tombstone) -> AuditEvent:
+        """Append deletion evidence without retaining the deleted content."""
+        event = AuditEvent(
+            event_id=f"audit-{uuid.uuid4().hex}",
+            case_id=tombstone.record_id,
+            trace_id=tombstone.record_id,
+            event_type="record_tombstone",
+            occurred_at=tombstone.deleted_at,
+            payload={
+                "record_id": tombstone.record_id,
+                "original_hash": tombstone.original_hash,
+                "reason": tombstone.reason,
+                "deleted_at": tombstone.deleted_at.astimezone(UTC).isoformat(),
+                "component": "audit.retention",
+            },
+        )
+        return self.append(event)
 
     def verify(self) -> ChainVerification:
         """Recompute the chain from the file and report the first break.
