@@ -160,6 +160,7 @@ class PrecheckService:
         content_subtype: str = "",
         therapeutic_area: str = "",
         client_content_version: str = "",
+        entrypoint: Entrypoint = Entrypoint.CONTENT,
     ) -> PrecheckResult:
         started = time.perf_counter()
         text = content or ""
@@ -245,7 +246,7 @@ class PrecheckService:
             list(sanitized.findings) + scan_untrusted_content(text),
             pack,
             entity_resolution=sanitized.resolution,
-            entrypoint=Entrypoint.CONTENT,
+            entrypoint=entrypoint,
             offset_map=sanitized.offset_map,
         )
 

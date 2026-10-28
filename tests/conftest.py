@@ -31,6 +31,7 @@ from compliance_guard.security.sessions import SessionStore
 from compliance_guard.knowledge.glossary import default_glossary
 from compliance_guard.workflow.orchestrator import Orchestrator
 from compliance_guard.workflow.checks import CheckService
+from compliance_guard.workflow.conversations import ConversationGuard, ConversationStore
 from compliance_guard.workflow.precheck import PrecheckService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -112,6 +113,11 @@ class AppServices:
         self.checks = CheckService(
             precheck=self.precheck,
             orchestrator=self.orchestrator,
+            policy_store=policy_store,
+        )
+        self.conversations = ConversationGuard(
+            checks=self.checks,
+            store=ConversationStore(),
             policy_store=policy_store,
         )
 

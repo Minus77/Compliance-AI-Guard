@@ -12,6 +12,7 @@ from pydantic import Field, field_validator
 from compliance_guard.domain.enums import (
     ContentType,
     Decision,
+    Entrypoint,
     Severity,
     normalize_content_type,
 )
@@ -115,7 +116,13 @@ class CheckService:
         if requested and requested != current:
             raise ValueError(f"unknown policy bundle version {requested!r}")
 
-    def precheck_preview(self, request: CheckRequest, *, locale: str = "zh-CN") -> PrecheckResult:
+    def precheck_preview(
+        self,
+        request: CheckRequest,
+        *,
+        locale: str = "zh-CN",
+        entrypoint: Entrypoint = Entrypoint.CONTENT,
+    ) -> PrecheckResult:
         self._require_rule_version(request.rule_version)
         return self._precheck.run(
             request.content,
@@ -129,10 +136,21 @@ class CheckService:
             content_subtype=request.content_subtype,
             therapeutic_area=request.therapeutic_area,
             client_content_version=request.client_content_version,
+            entrypoint=entrypoint,
         )
 
-    def precheck(self, request: CheckRequest, *, locale: str = "zh-CN") -> CheckResult:
-        preview = self.precheck_preview(request, locale=locale)
+    def precheck(
+        self,
+        request: CheckRequest,
+        *,
+        locale: str = "zh-CN",
+        entrypoint: Entrypoint = Entrypoint.CONTENT,
+    ) -> CheckResult:
+        preview = self.precheck_preview(
+            request,
+            locale=locale,
+            entrypoint=entrypoint,
+        )
         findings = [
             CheckFinding(
                 type=finding.type,

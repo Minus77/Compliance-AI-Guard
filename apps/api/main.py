@@ -104,6 +104,14 @@ from compliance_guard.security.sessions import (
 )
 from compliance_guard.workflow.orchestrator import Orchestrator
 from compliance_guard.workflow.checks import CheckRequest, CheckService
+from compliance_guard.workflow.conversations import (
+    ConversationExpiredError,
+    ConversationGuard,
+    ConversationNotFoundError,
+    ConversationStaleError,
+    ConversationStore,
+    GuardInputRequest,
+)
 from compliance_guard.workflow.precheck import PrecheckService
 from compliance_guard.workflow.scenario import demo_mode_enabled
 
@@ -186,6 +194,11 @@ def _production_services() -> _Services:
         orchestrator=orchestrator,
         policy_store=policy_store,
     )
+    conversations = ConversationGuard(
+        checks=checks,
+        store=ConversationStore(),
+        policy_store=policy_store,
+    )
     return _Services(
         gateway=gateway,
         registry=registry,
@@ -200,6 +213,7 @@ def _production_services() -> _Services:
         decisions=decisions,
         orchestrator=orchestrator,
         checks=checks,
+        conversations=conversations,
         sources=SourceRegistry(ledger=ledger),
         feedback=FeedbackStore(),
         precheck=precheck,
@@ -882,6 +896,62 @@ def create_app(services: Any | None = None) -> FastAPI:
         except KeyError:
             raise KeyError(check_id)
         return result.model_dump(mode="json")
+
+    # -- guarded AI conversations --------------------------------------------
+
+    @app.post("/api/conversations/guard-input")
+    def guard_conversation_input(
+        payload: GuardInputRequest,
+        x_demo_role: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = _actor_from_header(services.auth, x_demo_role)
+        try:
+            result = services.conversations.guard_input(payload, actor)
+        except PermissionError as error:
+            raise ApiError("forbidden", 403, str(error)) from None
+        except ConversationStaleError:
+            raise ApiError(
+                "conversation_requires_recheck",
+                409,
+                "input must be checked again against the current rule version",
+            ) from None
+        except ValueError as error:
+            raise ApiError("rule_version_conflict", 409, str(error)) from None
+        return result.model_dump(mode="json")
+
+    @app.get("/api/conversations/{conversation_id}")
+    def get_guarded_conversation(
+        conversation_id: str,
+        tenant_id: str = "",
+        rule_version: str = "",
+        x_demo_role: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = _actor_from_header(services.auth, x_demo_role)
+        tenant = actor.tenant_id or tenant_id
+        if not tenant:
+            raise ApiError("tenant_required", 422, "tenant_id is required")
+        try:
+            session = services.conversations.get(
+                conversation_id,
+                tenant_id=tenant,
+                actor=actor,
+                rule_version=rule_version,
+            )
+        except ConversationNotFoundError:
+            raise KeyError(conversation_id) from None
+        except ConversationExpiredError:
+            raise ApiError(
+                "conversation_expired",
+                410,
+                "conversation session expired; run the input guard again",
+            ) from None
+        except ConversationStaleError:
+            raise ApiError(
+                "conversation_requires_recheck",
+                409,
+                "rule version changed; run the input guard again",
+            ) from None
+        return session.model_dump(mode="json")
 
     # -- cases ---------------------------------------------------------------
 
