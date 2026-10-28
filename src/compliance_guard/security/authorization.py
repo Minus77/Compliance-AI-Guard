@@ -9,14 +9,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from compliance_guard.domain.enums import Role
+from compliance_guard.domain.enums import Role, normalize_role
 from compliance_guard.domain.models import Actor
 
 _DEMO_HEADER_ROLES: dict[str, Role] = {
+    "author": Role.AUTHOR,
     "field_rep": Role.FIELD_REP,
+    "submitter": Role.SUBMITTER,
     "reviewer": Role.REVIEWER,
     "pv_reviewer": Role.PV_REVIEWER,
+    "safety_reviewer": Role.SAFETY_REVIEWER,
     "medical_reviewer": Role.MEDICAL_REVIEWER,
+    "legal_reviewer": Role.LEGAL_REVIEWER,
     "compliance_admin": Role.COMPLIANCE_ADMIN,
     "architect": Role.ARCHITECT,
     "representative": Role.REPRESENTATIVE,
@@ -40,6 +44,8 @@ _ADMIN_ROLES = frozenset({Role.COMPLIANCE_ADMIN, Role.ADMIN})
 _PERMISSION_MATRIX: dict[str, frozenset[Role]] = {
     "view_case_summary": frozenset(
         {
+            Role.AUTHOR,
+            Role.SUBMITTER,
             Role.FIELD_REP,
             Role.REVIEWER,
             Role.PV_REVIEWER,
@@ -52,6 +58,16 @@ _PERMISSION_MATRIX: dict[str, frozenset[Role]] = {
             Role.REGULATORY_AFFAIRS,
             Role.MLR_REVIEWER,
             Role.AUDITOR,
+        }
+    ),
+    "submit": frozenset(
+        {
+            Role.AUTHOR,
+            Role.SUBMITTER,
+            Role.FIELD_REP,
+            Role.REPRESENTATIVE,
+            Role.COMPLIANCE_ADMIN,
+            Role.ADMIN,
         }
     ),
     "review_case": frozenset(
@@ -67,7 +83,12 @@ _PERMISSION_MATRIX: dict[str, frozenset[Role]] = {
     # PV review and ICSR submission sit with pharmacovigilance and the QPPV.
     "pv_review": frozenset({Role.PV_REVIEWER, Role.QPPV, Role.COMPLIANCE_ADMIN}),
     "medical_review": frozenset(
-        {Role.MEDICAL_REVIEWER, Role.MSL, Role.COMPLIANCE_ADMIN}
+        {
+            Role.MEDICAL_REVIEWER,
+            Role.SAFETY_REVIEWER,
+            Role.MSL,
+            Role.COMPLIANCE_ADMIN,
+        }
     ),
     # MLR (medical/legal/regulatory) sign-off on promotional material.
     "mlr_approve": frozenset({Role.MLR_REVIEWER, Role.COMPLIANCE_ADMIN}),
@@ -113,6 +134,7 @@ _PERMISSION_MATRIX: dict[str, frozenset[Role]] = {
 # controlling procedure rather than an unexplained permission name.
 _ACTION_SOP: dict[str, str] = {
     "view_case_summary": "SOP-CR-002",
+    "submit": "SOP-CR-001",
     "review_case": "SOP-MLR-021",
     "pv_review": "SOP-PV-007",
     "medical_review": "SOP-MED-011",
@@ -181,7 +203,13 @@ class AuthorizationService:
     def actor_from_header(x_demo_role: str | None, tenant_id: str | None = None) -> Actor:
         if x_demo_role is None or not x_demo_role.strip():
             raise ValueError("missing or empty x-demo-role header")
-        role = _DEMO_HEADER_ROLES.get(x_demo_role.strip().casefold())
+        raw = x_demo_role.strip().casefold()
+        role = _DEMO_HEADER_ROLES.get(raw)
+        if role is None:
+            try:
+                role = normalize_role(raw)
+            except ValueError:
+                role = None
         if role is None:
             raise ValueError(f"unknown x-demo-role {x_demo_role!r}")
         return Actor(actor_id=f"demo-{role.value}", role=role, tenant_id=tenant_id)

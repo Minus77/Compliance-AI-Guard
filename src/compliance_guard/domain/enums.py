@@ -88,21 +88,27 @@ class TaskType(str, Enum):
 
 
 class Role(str, Enum):
+    AUTHOR = "author"
+    SUBMITTER = "submitter"
+    REVIEWER = "reviewer"
+    MEDICAL_REVIEWER = "medical_reviewer"
+    SAFETY_REVIEWER = "safety_reviewer"
+    LEGAL_REVIEWER = "legal_reviewer"
+    COMPLIANCE_ADMIN = "compliance_admin"
+    AUDITOR = "auditor"
+    ADMIN = "admin"
+
+    # Read-only compatibility values for persisted records and existing clients.
     REPRESENTATIVE = "representative"
     COMPLIANCE = "compliance"
     MEDICAL_REVIEW = "medical_review"
     PHARMACOVIGILANCE = "pharmacovigilance"
     LEGAL = "legal"
     SECURITY = "security"
-    AUDITOR = "auditor"
-    ADMIN = "admin"
     ARCHITECT = "architect"
     SYSTEM = "system"
     FIELD_REP = "field_rep"
-    REVIEWER = "reviewer"
     PV_REVIEWER = "pv_reviewer"
-    MEDICAL_REVIEWER = "medical_reviewer"
-    COMPLIANCE_ADMIN = "compliance_admin"
     # Functions a real pharma affiliate separates. MSL is medical-affairs
     # field-facing (not commercial); QPPV is the EU-style qualified person for
     # pharmacovigilance; QA owns CSV/GxP posture; regulatory owns submissions.
@@ -119,6 +125,71 @@ class DataClass(str, Enum):
     CONFIDENTIAL = "confidential"
     PII_TOKENIZED = "pii_tokenized"
     PHI_TOKENIZED = "phi_tokenized"
+
+
+class ContentType(str, Enum):
+    CUSTOMER_INTERACTION_NOTE = "customer_interaction_note"
+    MEDICAL_INFORMATION_REQUEST = "medical_information_request"
+    MEDICAL_FIELD_NOTE = "medical_field_note"
+    PROMOTIONAL_CONTENT = "promotional_content"
+    AI_CONVERSATION = "ai_conversation"
+    OTHER = "other"
+
+
+_ROLE_ALIASES = {
+    "field_rep": Role.AUTHOR,
+    "representative": Role.AUTHOR,
+    "author": Role.AUTHOR,
+    "submitter": Role.SUBMITTER,
+    "reviewer": Role.REVIEWER,
+    "compliance": Role.REVIEWER,
+    "medical_review": Role.MEDICAL_REVIEWER,
+    "medical_reviewer": Role.MEDICAL_REVIEWER,
+    "pharmacovigilance": Role.SAFETY_REVIEWER,
+    "pv_reviewer": Role.SAFETY_REVIEWER,
+    "safety_reviewer": Role.SAFETY_REVIEWER,
+    "legal": Role.LEGAL_REVIEWER,
+    "legal_reviewer": Role.LEGAL_REVIEWER,
+    "compliance_admin": Role.COMPLIANCE_ADMIN,
+    "architect": Role.COMPLIANCE_ADMIN,
+    "auditor": Role.AUDITOR,
+    "admin": Role.ADMIN,
+    "system": Role.SYSTEM,
+    "security": Role.SECURITY,
+    "msl": Role.MSL,
+    "qppv": Role.QPPV,
+    "qa": Role.QA,
+    "regulatory_affairs": Role.REGULATORY_AFFAIRS,
+    "mlr_reviewer": Role.MLR_REVIEWER,
+}
+
+_CONTENT_TYPE_ALIASES = {
+    "call_report": ContentType.CUSTOMER_INTERACTION_NOTE,
+    "customer_interaction_note": ContentType.CUSTOMER_INTERACTION_NOTE,
+    "medical_information_request": ContentType.MEDICAL_INFORMATION_REQUEST,
+    "medical_field_note": ContentType.MEDICAL_FIELD_NOTE,
+    "promotional": ContentType.PROMOTIONAL_CONTENT,
+    "promotional_content": ContentType.PROMOTIONAL_CONTENT,
+    "medcomms": ContentType.PROMOTIONAL_CONTENT,
+    "ai_conversation": ContentType.AI_CONVERSATION,
+    "other": ContentType.OTHER,
+}
+
+
+def normalize_role(value: str) -> Role:
+    """Resolve a current role or a persisted legacy alias."""
+    normalized = value.strip().casefold()
+    if normalized in _ROLE_ALIASES:
+        return _ROLE_ALIASES[normalized]
+    try:
+        return Role(normalized)
+    except ValueError as exc:
+        raise ValueError(f"unknown role {value!r}") from exc
+
+
+def normalize_content_type(value: str) -> ContentType:
+    """Resolve a documented content type or a compatibility alias."""
+    return _CONTENT_TYPE_ALIASES.get(value.strip().casefold(), ContentType.OTHER)
 
 
 class Modality(str, Enum):

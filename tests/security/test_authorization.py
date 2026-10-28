@@ -98,3 +98,14 @@ def test_tenant_mismatch_denies_tenant_scoped_action():
     foreign = Actor(actor_id="rep-9", role="field_rep", tenant_id="TENANT-EU")
     assert service.can(foreign, "view_case_summary", resource={"tenant_id": "TENANT-CN"}) is False
     assert service.can(foreign, "view_case_summary", resource={"tenant_id": "TENANT-EU"}) is True
+
+
+def test_neutral_roles_keep_the_same_deny_by_default_boundaries():
+    service = AuthorizationService()
+    submitter = actor("submitter")
+    safety = actor("safety_reviewer")
+
+    assert service.can(submitter, "view_case_summary")
+    assert service.can(submitter, "submit")
+    assert service.can(safety, "medical_review")
+    assert service.can(submitter, "config_publish") is False
