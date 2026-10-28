@@ -1,11 +1,20 @@
 import os
+import shutil
 import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
 import pytest
+
+# `apps.api.main` composes a production application at import time. Point all
+# writable state at a per-test-run directory before that import can happen, so
+# importing route modules never publishes rule state or creates local accounts in
+# the checkout.
+_TEST_DATA_ROOT = Path(tempfile.mkdtemp(prefix="compliance-guard-tests-"))
+os.environ["COMPLIANCE_GUARD_DATA_DIR"] = str(_TEST_DATA_ROOT)
 
 from compliance_guard.audit.ledger import AuditLedger
 from compliance_guard.audit.metrics import Metrics
@@ -15,7 +24,13 @@ from compliance_guard.domain.models import Actor, CheckCaseRequest, Evidence
 from compliance_guard.knowledge.evidence_pack import EvidencePack
 from compliance_guard.knowledge.label_facts import LabelFactsStore
 from compliance_guard.knowledge.retrieval import EvidenceRetriever
-from compliance_guard.integrations.source_registry import SourceRegistry
+from compliance_guard.integrations import (
+    ConnectorRegistry,
+    InMemoryContentSource,
+    InMemoryReviewExport,
+    InMemorySafetyIntake,
+    seed_generic_records,
+)
 from compliance_guard.llm.adapters import MockAdapter
 from compliance_guard.llm.gateway import ModelGateway
 from compliance_guard.llm.registry import ModelRegistry
@@ -79,8 +94,17 @@ class AppServices:
         self.review_queue = ReviewQueue(
             auth=self.auth, ledger=self.ledger, metrics=self.metrics
         )
-        # Pluggable source connectors (Veeva CRM / Vault contract mocks).
-        self.sources = SourceRegistry(ledger=self.ledger)
+        self.content_source = InMemoryContentSource()
+        seed_generic_records(self.content_source)
+        self.safety_intake = InMemorySafetyIntake()
+        self.review_export = InMemoryReviewExport()
+        self.connectors = ConnectorRegistry()
+        for connector in (
+            self.content_source,
+            self.safety_intake,
+            self.review_export,
+        ):
+            self.connectors.register(connector)
         # Misclassification feedback lands beside the ledger so a test run cannot
         # write regression candidates into the repository's own candidate file.
         self.feedback = FeedbackStore(
@@ -197,6 +221,11 @@ def build_sample_request(scenario: str) -> CheckCaseRequest:
         idempotency_key=f"idem-{scenario}-{uuid4().hex}",
         extensions=_extensions(scenario),
     )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Remove this test process's isolated runtime state."""
+    shutil.rmtree(_TEST_DATA_ROOT, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)

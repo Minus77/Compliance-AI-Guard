@@ -1,12 +1,28 @@
-"""External integration boundary: idempotent event bus and adapter contracts.
+"""Vendor-neutral external connector and event integration boundary."""
 
-This package owns the compliance boundary with external systems (Veeva/Vault,
-PV, CRM). It provides the idempotent event bus with dead-letter queueing plus
-mock adapter contracts for Veeva, PV, and CRM. All live integrations are
-future scope; only mock contracts exist here.
-"""
-
-from .crm_adapter import CrmAdapter
+from .connector_registry import (
+    ConnectorAlreadyRegisteredError,
+    ConnectorNotFoundError,
+    ConnectorRegistry,
+    ConnectorRegistryError,
+)
+from .content_source import (
+    ContentNotFoundError,
+    ContentSource,
+    ContentSourceError,
+    InMemoryContentSource,
+    seed_generic_records,
+)
+from .contracts import (
+    ConnectorContract,
+    ConnectorInfo,
+    ContentEnvelope,
+    ExportReceipt,
+    HealthStatus,
+    ReviewExportRequest,
+    SafetyCandidate,
+    SafetyReceipt,
+)
 from .event_bus import (
     DeadLetterRecord,
     EventBus,
@@ -18,41 +34,46 @@ from .event_bus import (
     SchemaError,
     receive_event,
 )
-from .pv_adapter import PvAdapter, PvCaseRecord
-from .veeva_adapter import (
-    AdapterError,
-    ApprovalDeniedError,
-    ApprovalToken,
-    ContentDraft,
-    ExternalTaskRef,
-    SourceNotFoundError,
-    SourceRecord,
-    StaleVersionError,
-    VeevaAdapter,
-    WriteResult,
+from .review_export import (
+    InMemoryReviewExport,
+    ReviewExport,
+    ReviewExportDisabledError,
 )
+from .safety_intake import InMemorySafetyIntake, SafetyIntake, SafetyIntakeError
+from .stale_version import StaleVersionError
 
 __all__ = [
-    "AdapterError",
-    "ApprovalDeniedError",
-    "ApprovalToken",
-    "ContentDraft",
-    "CrmAdapter",
+    "ConnectorAlreadyRegisteredError",
+    "ConnectorContract",
+    "ConnectorInfo",
+    "ConnectorNotFoundError",
+    "ConnectorRegistry",
+    "ConnectorRegistryError",
+    "ContentEnvelope",
+    "ContentNotFoundError",
+    "ContentSource",
+    "ContentSourceError",
     "DeadLetterRecord",
     "EventBus",
     "EventProcessingError",
+    "ExportReceipt",
     "ExternalEvent",
-    "ExternalTaskRef",
+    "HealthStatus",
+    "InMemoryContentSource",
+    "InMemoryReviewExport",
+    "InMemorySafetyIntake",
     "NonRetryableProcessingError",
     "NormalizedEvent",
-    "PvAdapter",
-    "PvCaseRecord",
     "RetryableProcessingError",
+    "ReviewExport",
+    "ReviewExportDisabledError",
+    "ReviewExportRequest",
+    "SafetyCandidate",
+    "SafetyIntake",
+    "SafetyIntakeError",
+    "SafetyReceipt",
     "SchemaError",
-    "SourceNotFoundError",
-    "SourceRecord",
     "StaleVersionError",
-    "VeevaAdapter",
-    "WriteResult",
     "receive_event",
+    "seed_generic_records",
 ]

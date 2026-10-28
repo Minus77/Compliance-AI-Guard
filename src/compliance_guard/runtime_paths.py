@@ -58,12 +58,12 @@ def user_data_dir() -> Path:
     Only used when frozen; from source the repository ``data/`` directory is
     kept so existing developer and test behaviour is unchanged.
     """
-    if not is_frozen():
-        return resource_root() / "data"
-
     override = os.environ.get("COMPLIANCE_GUARD_DATA_DIR")
     if override:
         return Path(override).expanduser()
+
+    if not is_frozen():
+        return resource_root() / "data"
 
     if sys.platform == "darwin":
         base = Path.home() / "Library" / "Application Support"

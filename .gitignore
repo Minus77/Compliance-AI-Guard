@@ -13,6 +13,7 @@ artifacts/
 # runtime artifacts (regenerated on every run; keep out of accidental commits)
 data/audit/
 data/runtime_config.json
+data/rules/
 # Local accounts. Holds scrypt password hashes and live session tokens: a
 # committed credential store is a credential store shared with everyone who
 # clones the repository, and the bootstrap recovery would then hand the same

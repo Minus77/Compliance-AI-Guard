@@ -69,8 +69,15 @@ from compliance_guard.agents.icsr_followup import build_followup_form, followup_
 from compliance_guard.knowledge.glossary import DEFAULT_LOCALE, default_glossary
 from compliance_guard.knowledge.label_facts import LabelFactsStore
 from compliance_guard.knowledge.retrieval import EvidenceRetriever
-from compliance_guard.integrations.source_registry import SourceRegistry
-from compliance_guard.integrations.veeva_adapter import StaleVersionError
+from compliance_guard.integrations import (
+    ConnectorRegistry,
+    ContentSource,
+    InMemoryContentSource,
+    InMemoryReviewExport,
+    InMemorySafetyIntake,
+    StaleVersionError,
+    seed_generic_records,
+)
 from compliance_guard.llm.gateway import ModelGateway
 from compliance_guard.llm.registry import (
     DraftValidationError,
@@ -218,6 +225,13 @@ def _production_services() -> _Services:
         gateway=gateway,
         ledger=ledger,
     )
+    content_source = InMemoryContentSource()
+    seed_generic_records(content_source)
+    safety_intake = InMemorySafetyIntake()
+    review_export = InMemoryReviewExport()
+    connectors = ConnectorRegistry()
+    for connector in (content_source, safety_intake, review_export):
+        connectors.register(connector)
     return _Services(
         gateway=gateway,
         registry=registry,
@@ -235,7 +249,10 @@ def _production_services() -> _Services:
         orchestrator=orchestrator,
         checks=checks,
         conversations=conversations,
-        sources=SourceRegistry(ledger=ledger),
+        connectors=connectors,
+        content_source=content_source,
+        safety_intake=safety_intake,
+        review_export=review_export,
         feedback=FeedbackStore(),
         precheck=precheck,
         glossary=default_glossary(),
@@ -2208,12 +2225,23 @@ def create_app(services: Any | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         """Enumerate source connectors and their available upstream records."""
         _actor_from_header(services.auth, x_demo_role)
+        sources = [
+            connector
+            for connector in services.connectors.list()
+            if connector.connector_kind == "content_source"
+        ]
+        source_records: list[dict[str, str]] = []
+        for source_info in sources:
+            if connector_id and source_info.connector_id != connector_id:
+                continue
+            source = services.connectors.get(source_info.connector_id)
+            if isinstance(source, ContentSource):
+                source_records.extend(source.records())
         return {
             "connectors": [
-                connector.model_dump(mode="json")
-                for connector in services.sources.connectors()
+                connector.model_dump(mode="json") for connector in sources
             ],
-            "records": services.sources.records(connector_id),
+            "records": sorted(source_records, key=lambda item: item["record_id"]),
         }
 
     @app.get("/api/sources/{connector_id}/records/{record_id}")
@@ -2229,7 +2257,14 @@ def create_app(services: Any | None = None) -> FastAPI:
         400 rather than silently trusting the caller-supplied version.
         """
         _actor_from_header(services.auth, x_demo_role)
-        return services.sources.fetch(connector_id, record_id, version=version)
+        source = services.connectors.get(connector_id)
+        if not isinstance(source, ContentSource):
+            raise ApiError(
+                "not_a_content_source",
+                400,
+                f"connector {connector_id!r} does not expose content reads",
+            )
+        return source.fetch(record_id, version=version).model_dump(mode="json")
 
     # -- attachments ---------------------------------------------------------
 
@@ -2356,15 +2391,19 @@ def create_app(services: Any | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         """Connector governance view: ownership, auth mode, residency, CSV status."""
         _actor_from_header(services.auth, x_demo_role)
+        connectors: list[dict[str, Any]] = []
+        for connector in services.connectors.list():
+            payload = connector.model_dump(mode="json")
+            payload["health"] = services.connectors.health(
+                connector.connector_id
+            ).model_dump(mode="json")
+            connectors.append(payload)
         return {
-            "connectors": [
-                connector.model_dump(mode="json")
-                for connector in services.sources.connectors()
-            ],
+            "connectors": connectors,
             "note": (
-                "Contract-only mocks. No live Veeva/Vault/PV tenant, credential, "
-                "or network call is used; validation_status is 'not_validated' "
-                "because this demo makes no CSV/GxP claim."
+                "Contract-only in-memory connectors. No live tenant, credential, "
+                "or network call is used, and no validation or certification "
+                "claim is made."
             ),
         }
 

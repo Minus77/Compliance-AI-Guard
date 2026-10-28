@@ -353,26 +353,24 @@ def test_permission_gating_is_advisory_not_the_only_check(client):
 def test_sources_enumerate_pluggable_connectors(client):
     body = client.get("/api/sources", headers={"x-demo-role": "field_rep"}).json()
     ids = {c["connector_id"] for c in body["connectors"]}
-    assert {"veeva_crm", "veeva_vault", "manual"} <= ids
-    systems = {c["system"] for c in body["connectors"]}
-    assert "Veeva CRM" in systems
-    # Every connector must declare itself a mock so the UI cannot imply a live tenant.
+    assert ids == {"content_source"}
+    assert all(c["connector_kind"] == "content_source" for c in body["connectors"])
     assert all(c["mode"] == "mock" for c in body["connectors"])
     assert body["records"]
 
 
 def test_source_record_is_reread_from_authoritative_store(client):
     body = client.get(
-        "/api/sources/veeva_crm/records/CR-2026-0002", headers={"x-demo-role": "field_rep"}
+        "/api/sources/content_source/records/CONTENT-0002",
+        headers={"x-demo-role": "field_rep"},
     ).json()
-    assert body["record_id"] == "CR-2026-0002"
-    assert body["reread"] is True
-    assert body["content"]
+    assert body["record_id"] == "CONTENT-0002"
+    assert body["text"]
 
 
 def test_source_rejects_stale_event_version_with_conflict(client):
     stale = client.get(
-        "/api/sources/veeva_crm/records/CR-2026-0002?version=v1",
+        "/api/sources/content_source/records/CONTENT-0002?version=1",
         headers={"x-demo-role": "field_rep"},
     )
     assert stale.status_code == 409
@@ -381,7 +379,8 @@ def test_source_rejects_stale_event_version_with_conflict(client):
 
 def test_unknown_source_record_is_not_found(client):
     missing = client.get(
-        "/api/sources/veeva_crm/records/CR-NOPE", headers={"x-demo-role": "field_rep"}
+        "/api/sources/content_source/records/CONTENT-NOPE",
+        headers={"x-demo-role": "field_rep"},
     )
     assert missing.status_code == 404
 
@@ -514,16 +513,14 @@ def test_audit_trail_declares_alcoa_integrity_model(client):
 
 def test_connector_register_exposes_governance_attributes(client):
     body = client.get("/api/connectors", headers={"x-demo-role": "qa"}).json()
-    crm = [c for c in body["connectors"] if c["connector_id"] == "veeva_crm"][0]
-    assert crm["vendor"] == "Veeva Systems"
-    assert crm["auth_mode"] == "oauth2_client_credentials"
-    assert crm["data_residency"] == "CN"
-    assert crm["sop_ref"]
-    assert crm["retention_period"]
-    # No CSV claim is made anywhere in this demo.
-    assert crm["validation_status"] == "not_validated"
-    # A credential reference is a pointer, never a secret value.
-    assert crm["credential_ref"].startswith("vault://")
+    connectors = {item["connector_id"]: item for item in body["connectors"]}
+    assert set(connectors) == {"content_source", "safety_intake", "review_export"}
+    source = connectors["content_source"]
+    assert {"read", "version_check"} <= set(source["capabilities"])
+    assert source["allowed_actions"] == ["read"]
+    assert source["data_classes"]
+    assert source["health"]["status"] == "healthy"
+    assert connectors["review_export"]["health"]["status"] == "disabled"
 
 
 def test_permissions_expose_governing_sop_per_action(client):

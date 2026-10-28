@@ -27,8 +27,8 @@ def sample_event() -> ExternalEvent:
         tenant_id="TENANT-CN",
         record_id="SR-001",
         version="v3",
-        event_type="call_report",
-        source="veeva_vault",
+        event_type="content_submitted",
+        source="content_source",
         received_at=datetime(2026, 8, 20, tzinfo=UTC),
         payload={"market": "CN", "product_id": "PRODUCT-001"},
     )
@@ -61,8 +61,8 @@ def test_schema_error_goes_to_dead_letter_queue(event_bus):
         "tenant_id": "TENANT-CN",
         "record_id": "SR-001",
         "version": "v3",
-        "event_type": "call_report",
-        "source": "veeva_vault",
+        "event_type": "content_submitted",
+        "source": "content_source",
         "received_at": datetime(2026, 8, 20, tzinfo=UTC),
         "surprise": "not-a-known-field",
     }
@@ -185,8 +185,8 @@ def test_schema_error_dlq_entry_is_not_replayed(event_bus):
         "tenant_id": "TENANT-CN",
         "record_id": "SR-001",
         "version": "v3",
-        "event_type": "call_report",
-        "source": "veeva_vault",
+        "event_type": "content_submitted",
+        "source": "content_source",
         "received_at": datetime(2026, 8, 20, tzinfo=UTC),
         "surprise": "not-a-known-field",
     }

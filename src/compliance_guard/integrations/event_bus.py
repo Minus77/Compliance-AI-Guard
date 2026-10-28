@@ -32,11 +32,10 @@ from compliance_guard.audit.ledger import AuditLedger
 from compliance_guard.domain.enums import Role
 from compliance_guard.domain.models import AuditEvent, DomainModel, ReviewTask
 
-_REVIEW_EVENT_TYPES = frozenset({"adverse_event", "safety_signal", "call_report"})
+_REVIEW_EVENT_TYPES = frozenset({"content_submitted", "safety_signal"})
 _REVIEW_ROLE_BY_TYPE = {
-    "adverse_event": Role.PHARMACOVIGILANCE,
-    "safety_signal": Role.PV_REVIEWER,
-    "call_report": Role.COMPLIANCE,
+    "content_submitted": Role.REVIEWER,
+    "safety_signal": Role.SAFETY_REVIEWER,
 }
 
 EventHandler = Callable[[Any], str | None]
