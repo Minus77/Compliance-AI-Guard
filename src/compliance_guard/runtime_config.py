@@ -76,8 +76,11 @@ def _parse_moment(value: Any) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+POLICY_BUNDLE_FILENAME = "general-medical-demo.json"
+
+
 def _check_policy_bundle(config_root: Path, now: datetime) -> ConfigCheck:
-    path = config_root / "policies" / "cn-demo.json"
+    path = config_root / "policies" / POLICY_BUNDLE_FILENAME
     payload = _load_json(path)
     version = str(payload.get("policy_version") or "")
     if not version:
@@ -156,7 +159,7 @@ def _check_glossary(config_root: Path) -> ConfigCheck:
     # Every rule a user can meet must have wording. A rule added without an
     # explanation would surface as a bare code, which is the failure the glossary
     # exists to prevent -- so it is a startup error, not a cosmetic gap.
-    bundle_path = config_root / "policies" / "cn-demo.json"
+    bundle_path = config_root / "policies" / POLICY_BUNDLE_FILENAME
     if bundle_path.is_file():
         rules = (_load_json(bundle_path).get("rules") or {}).values()
         types = {rule.get("type") for rule in rules if rule.get("type")}

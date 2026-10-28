@@ -156,8 +156,8 @@ def test_off_label_field_mismatch_routes_to_compliance_and_medical(policy):
     )
     off_label = next(finding for finding in result.findings if finding.type == "off_label")
     assert off_label.severity == "S1"
-    assert Role.COMPLIANCE in off_label.required_roles
-    assert Role.MEDICAL_REVIEW in off_label.required_roles
+    assert Role.REVIEWER in off_label.required_roles
+    assert Role.MEDICAL_REVIEWER in off_label.required_roles
     assert Role.COMPLIANCE in result.routing.required_roles
 
 
@@ -492,9 +492,9 @@ def test_findings_record_rule_and_roles_for_audit(policy):
     rule = next(rule for rule in parse_bundle_rules(PolicyBundleStore().current()) if rule.type == "comparative_claim")
     assert claim.rule_id == rule.rule_id
     assert claim.severity == "S1"
-    assert claim.required_role == Role.COMPLIANCE
+    assert claim.required_role == Role.REVIEWER
     assert claim.next_action
-    assert result.policy_version == "CN-COMPLIANCE-2026-01"
+    assert result.policy_version == "GENERAL-MEDICAL-2026-01"
     assert claim.rule_id in result.rule_ids
 
 
@@ -506,9 +506,9 @@ def test_model_cannot_inject_server_controlled_fields(policy):
 def test_bundle_store_loads_version_and_current():
     store = PolicyBundleStore()
     current = store.current()
-    assert current.policy_version == "CN-COMPLIANCE-2026-01"
-    assert current.market == "CN"
-    loaded = store.load("CN-COMPLIANCE-2026-01")
+    assert current.policy_version == "GENERAL-MEDICAL-2026-01"
+    assert current.market == "GLOBAL"
+    loaded = store.load("GENERAL-MEDICAL-2026-01")
     assert loaded.policy_version == current.policy_version
     with pytest.raises(ValueError):
         store.load("NOPE-0001")

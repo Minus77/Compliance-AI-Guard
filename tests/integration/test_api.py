@@ -445,7 +445,7 @@ def test_findings_carry_rule_provenance_for_readable_explanations(client):
     assert ae["rule_id"] == "CN-001"
     assert "皮疹" in ae["matched_terms"]
     assert ae["sla_label"] == "8h"
-    assert "pharmacovigilance" in ae["required_roles"]
+    assert "safety_reviewer" in ae["required_roles"]
 
 
 # ---------------------------------------------------------------------------

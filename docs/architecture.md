@@ -150,7 +150,7 @@ both.
 
 ## 7. Policy rules
 
-21 rules in `config/policies/cn-demo.json`, versioned `CN-COMPLIANCE-2026-01`.
+21 rules in `config/policies/general-medical-demo.json`, versioned `GENERAL-MEDICAL-2026-01`.
 Each carries patterns, severity, decision, required roles, SLA, and whether an
 evidence gap is acceptable.
 

@@ -142,6 +142,13 @@ class Entrypoint(str, Enum):
     OUTPUT = "output"
 
 
+class RuleStatus(str, Enum):
+    DRAFT = "draft"
+    PASSED = "passed"
+    PUBLISHED = "published"
+    ROLLED_BACK = "rolled_back"
+
+
 _ROLE_ALIASES = {
     "field_rep": Role.AUTHOR,
     "representative": Role.AUTHOR,

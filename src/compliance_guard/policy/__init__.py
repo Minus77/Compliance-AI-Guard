@@ -2,6 +2,7 @@
 
 from .bundles import PolicyBundleStore, PolicyRule, parse_bundle_rules
 from .engine import PolicyEngine, PolicyFinding, PolicyResult
+from .publishing import RuleLifecycleStore, RuleTestFailure, RuleTestReport, RuleVersion
 from .routing import (
     RaciEntry,
     RaciMatrix,
@@ -18,6 +19,10 @@ __all__ = [
     "PolicyFinding",
     "PolicyResult",
     "PolicyRule",
+    "RuleLifecycleStore",
+    "RuleTestFailure",
+    "RuleTestReport",
+    "RuleVersion",
     "RaciEntry",
     "RaciMatrix",
     "ROUTE_VERSION",

@@ -27,7 +27,7 @@ def glossary() -> Glossary:
 
 @pytest.fixture(scope="module")
 def policy_rules() -> dict:
-    path = config_dir() / "policies" / "cn-demo.json"
+    path = config_dir() / "policies" / "general-medical-demo.json"
     return json.loads(path.read_text(encoding="utf-8"))["rules"]
 
 

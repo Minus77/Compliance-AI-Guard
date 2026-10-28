@@ -89,7 +89,11 @@ def parse_bundle_rules(bundle: PolicyBundle) -> list[PolicyRule]:
     """Validate and convert a bundle's raw rule map into typed rules."""
     rules: list[PolicyRule] = []
     for rule_id, raw in bundle.rules.items():
+        if isinstance(raw, PolicyRule):
+            rules.append(raw)
+            continue
         values = dict(raw)
+        values.pop("rule_id", None)
         values.setdefault("version", str(raw.get("version", bundle.policy_version)))
         values.setdefault("title", str(raw.get("title") or raw.get("type") or rule_id))
         rules.append(PolicyRule(rule_id=rule_id, **values))
@@ -104,11 +108,11 @@ def _repo_config_dir() -> Path:
 
 
 def _default_bundle_path() -> Path:
-    return _repo_config_dir() / "policies" / "cn-demo.json"
+    return _repo_config_dir() / "policies" / "general-medical-demo.json"
 
 
 class PolicyBundleStore:
-    """Repository for the versioned China demo policy bundle."""
+    """Repository for a versioned, general medical compliance bundle."""
 
     def __init__(self, path: str | Path | None = None) -> None:
         bundle_path = Path(path) if path else _default_bundle_path()

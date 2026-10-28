@@ -127,7 +127,7 @@ S0 与 S1 不可自我批准；审核界面对这两级禁用"接受"选项。
 
 ## 7. 策略规则
 
-`config/policies/cn-demo.json` 中共 21 条规则，版本号 `CN-COMPLIANCE-2026-01`。每条携带模式、严重度、决定、所需角色、SLA，以及是否可接受证据缺口。
+`config/policies/general-medical-demo.json` 中共 21 条规则，版本号 `GENERAL-MEDICAL-2026-01`。每条携带模式、严重度、决定、所需角色、SLA，以及是否可接受证据缺口。
 
 | 规则 | Finding | 严重度 | 决定 | 路由至 | SLA |
 | --- | --- | --- | --- | --- | --- |

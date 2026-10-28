@@ -74,12 +74,12 @@ def test_malformed_policy_bundle_is_rejected_with_a_readable_reason(tmp_path):
 
     broken = tmp_path / "policies"
     broken.mkdir()
-    (broken / "cn-demo.json").write_text("{ not json", encoding="utf-8")
+    (broken / "general-medical-demo.json").write_text("{ not json", encoding="utf-8")
     report = validate_configuration(config_dir=tmp_path)
     assert report.ok is False
     assert report.problems
     joined = " ".join(report.problems)
-    assert "cn-demo" in joined or "policy" in joined.casefold()
+    assert "general-medical-demo" in joined or "policy" in joined.casefold()
 
 
 def test_validation_names_the_file_that_is_wrong(tmp_path):
@@ -96,11 +96,17 @@ def test_expired_policy_bundle_is_reported(tmp_path):
     from compliance_guard.runtime_config import validate_configuration
     from compliance_guard.runtime_paths import config_dir as real_config_dir
 
-    source = json.loads((real_config_dir() / "policies" / "cn-demo.json").read_text(encoding="utf-8"))
+    source = json.loads(
+        (real_config_dir() / "policies" / "general-medical-demo.json").read_text(
+            encoding="utf-8"
+        )
+    )
     source["effective_until"] = "2020-01-01T00:00:00Z"
     target = tmp_path / "policies"
     target.mkdir()
-    (target / "cn-demo.json").write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+    (target / "general-medical-demo.json").write_text(
+        json.dumps(source, ensure_ascii=False), encoding="utf-8"
+    )
     # Copy the rest of the configuration so only the bundle is at fault.
     report = validate_configuration(config_dir=tmp_path)
     assert report.ok is False

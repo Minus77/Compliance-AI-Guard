@@ -182,7 +182,9 @@ def test_policy_rule_ids_match_the_shipped_bundle():
     import re
 
     bundle = json.loads(
-        (_PROJECT_ROOT / "config/policies/cn-demo.json").read_text(encoding="utf-8")
+        (_PROJECT_ROOT / "config/policies/general-medical-demo.json").read_text(
+            encoding="utf-8"
+        )
     )
     documented = set(
         re.findall(
@@ -192,7 +194,7 @@ def test_policy_rule_ids_match_the_shipped_bundle():
     )
 
     assert documented == set(bundle["rules"]), (
-        "architecture.md policy table has drifted from config/policies/cn-demo.json"
+        "architecture.md policy table has drifted from config/policies/general-medical-demo.json"
     )
 
 
