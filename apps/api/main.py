@@ -103,6 +103,7 @@ from compliance_guard.security.sessions import (
     announce_bootstrap_credential,
 )
 from compliance_guard.workflow.orchestrator import Orchestrator
+from compliance_guard.workflow.checks import CheckRequest, CheckService
 from compliance_guard.workflow.precheck import PrecheckService
 from compliance_guard.workflow.scenario import demo_mode_enabled
 
@@ -161,11 +162,17 @@ def _production_services() -> _Services:
     decisions = _import_decisions()(
         queue=review_queue, auth=auth, ledger=ledger, metrics=metrics
     )
+    policy_store = PolicyBundleStore()
+    label_facts_store = LabelFactsStore()
+    precheck = PrecheckService(
+        policy_store=policy_store,
+        label_facts_store=label_facts_store,
+    )
     orchestrator = Orchestrator(
         gateway=gateway,
         registry=registry,
-        policy_store=PolicyBundleStore(),
-        label_facts_store=LabelFactsStore(),
+        policy_store=policy_store,
+        label_facts_store=label_facts_store,
         retriever=EvidenceRetriever(),
         auth=auth,
         ledger=ledger,
@@ -174,11 +181,16 @@ def _production_services() -> _Services:
         review_queue=review_queue,
         decisions=decisions,
     )
+    checks = CheckService(
+        precheck=precheck,
+        orchestrator=orchestrator,
+        policy_store=policy_store,
+    )
     return _Services(
         gateway=gateway,
         registry=registry,
-        policy_store=PolicyBundleStore(),
-        label_facts_store=LabelFactsStore(),
+        policy_store=policy_store,
+        label_facts_store=label_facts_store,
         retriever=EvidenceRetriever(),
         auth=auth,
         ledger=ledger,
@@ -187,12 +199,10 @@ def _production_services() -> _Services:
         review_queue=review_queue,
         decisions=decisions,
         orchestrator=orchestrator,
+        checks=checks,
         sources=SourceRegistry(ledger=ledger),
         feedback=FeedbackStore(),
-        precheck=PrecheckService(
-            policy_store=PolicyBundleStore(),
-            label_facts_store=LabelFactsStore(),
-        ),
+        precheck=precheck,
         glossary=default_glossary(),
         lifecycle=LifecycleStore(),
         sessions=sessions,
@@ -827,6 +837,52 @@ def create_app(services: Any | None = None) -> FastAPI:
         """
         return services.glossary.payload(locale)
 
+    # -- shared content checks -----------------------------------------------
+
+    @app.post("/api/checks/precheck")
+    def precheck_content(payload: CheckRequest) -> dict[str, Any]:
+        try:
+            result = services.checks.precheck(payload)
+        except ValueError as error:
+            raise ApiError("rule_version_conflict", 409, str(error)) from None
+        return result.model_dump(mode="json")
+
+    @app.post("/api/checks", status_code=201)
+    def submit_content_check(
+        request: Request,
+        payload: CheckRequest,
+        x_demo_role: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        if request.state.session is not None or x_demo_role:
+            actor = _actor_from_header(services.auth, x_demo_role)
+        elif demo_mode_enabled():
+            actor = _default_field_rep()
+        else:
+            raise ApiError("unauthenticated", 401, "sign in at /api/auth/login")
+        try:
+            result = services.checks.submit(payload, actor)
+        except PermissionError as error:
+            raise ApiError("forbidden", 403, str(error)) from None
+        except ValueError as error:
+            raise ApiError("rule_version_conflict", 409, str(error)) from None
+        return result.model_dump(mode="json")
+
+    @app.get("/api/checks/{check_id}")
+    def get_content_check(
+        check_id: str,
+        tenant_id: str = "",
+        x_demo_role: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = _actor_from_header(services.auth, x_demo_role)
+        tenant = tenant_id or actor.tenant_id or ""
+        if not tenant:
+            raise ApiError("tenant_required", 422, "tenant_id is required")
+        try:
+            result = services.checks.get(check_id, tenant)
+        except KeyError:
+            raise KeyError(check_id)
+        return result.model_dump(mode="json")
+
     # -- cases ---------------------------------------------------------------
 
     @app.post("/api/cases/precheck")
@@ -837,18 +893,20 @@ def create_app(services: Any | None = None) -> FastAPI:
         submission would report, phrased in plain language, so a hint can never
         contradict the final answer.
         """
-        result = services.precheck.run(
-            payload.content,
-            tenant_id=payload.tenant_id,
-            market=payload.market,
-            language=payload.language,
-            product_id=payload.product_id,
-            claimed_fields=payload.structured_fields,
+        result = services.checks.precheck_preview(
+            CheckRequest(
+                tenant_id=payload.tenant_id,
+                content=payload.content,
+                market=payload.market,
+                language=payload.language,
+                product_id=payload.product_id,
+                content_type=payload.content_type,
+                content_subtype=payload.content_subtype,
+                therapeutic_area=payload.therapeutic_area,
+                business_fields=payload.structured_fields,
+                client_content_version=payload.client_content_version,
+            ),
             locale=payload.locale,
-            content_type=payload.content_type,
-            content_subtype=payload.content_subtype,
-            therapeutic_area=payload.therapeutic_area,
-            client_content_version=payload.client_content_version,
         )
         return result.model_dump(mode="json")
 
@@ -1016,7 +1074,7 @@ def create_app(services: Any | None = None) -> FastAPI:
             actor = _default_field_rep()
         else:
             raise ApiError("unauthenticated", 401, "sign in at /api/auth/login")
-        response = services.orchestrator.run_check_case(payload)
+        response = services.checks.submit_case(payload, actor)
         safe = sanitize(payload.content, SanitizeContext(tenant_id=payload.tenant_id))
         stored = {
             "case_id": response.case_id,

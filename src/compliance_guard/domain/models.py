@@ -186,6 +186,14 @@ class Finding(DomainModel):
     matched_terms: list[str] = Field(default_factory=list)
     sla_label: str | None = None
     required_roles: list[Role] = Field(default_factory=list)
+    spans: list["CharacterSpan"] = Field(default_factory=list)
+    rule_version: str = ""
+    category: str = ""
+    allow_save: bool = True
+    allow_generate: bool = True
+    allow_publish: bool = True
+    notification_message: str = ""
+    remediation_guidance: str = ""
 
 
 class CandidateFinding(DomainModel):

@@ -30,6 +30,7 @@ from compliance_guard.security.authorization import AuthorizationService
 from compliance_guard.security.sessions import SessionStore
 from compliance_guard.knowledge.glossary import default_glossary
 from compliance_guard.workflow.orchestrator import Orchestrator
+from compliance_guard.workflow.checks import CheckService
 from compliance_guard.workflow.precheck import PrecheckService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -107,6 +108,11 @@ class AppServices:
             metrics=self.metrics,
             review_queue=self.review_queue,
             decisions=self.decisions,
+        )
+        self.checks = CheckService(
+            precheck=self.precheck,
+            orchestrator=self.orchestrator,
+            policy_store=policy_store,
         )
 
     def with_gateway(self, gateway):

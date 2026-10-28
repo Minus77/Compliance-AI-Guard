@@ -358,7 +358,18 @@ class Orchestrator:
             # context preparation
             state, _ = self._advance(state, WorkflowEvent.PREPARE_CONTEXT, case_id, trace_id, "context.prepare")
             bundle = self._policy_store.load()
-            label_facts = self._label_facts_store.current(request.product_id, request.market)
+            label_facts = None
+            if request.product_id:
+                try:
+                    label_facts = self._label_facts_store.current(
+                        request.product_id,
+                        request.market,
+                    )
+                except (ValueError, KeyError):
+                    # An unknown product skips label comparison. Content and
+                    # security rules still apply and must report the same
+                    # policy version as the precheck path.
+                    label_facts = None
             context = CaseContext(
                 case_id=case_id,
                 trace_id=trace_id,
@@ -367,6 +378,9 @@ class Orchestrator:
                 language=request.language,
                 product_id=request.product_id,
                 channel=request.channel,
+                content_type=request.extensions.get("content_type") or request.channel,
+                content_version=hashlib.sha256(request.content.encode("utf-8")).hexdigest(),
+                therapeutic_area=request.extensions.get("therapeutic_area"),
                 source=request.source,
                 source_version=request.source_version,
                 policy_version=bundle.policy_version,
@@ -468,6 +482,7 @@ class Orchestrator:
                 security_findings,
                 evidence_pack,
                 entity_resolution=sanitized.resolution,
+                offset_map=sanitized.offset_map,
             )
 
             # decide
@@ -881,6 +896,14 @@ class Orchestrator:
             matched_terms=list(getattr(finding, "matched_terms", []) or []),
             sla_label=getattr(finding, "sla_label", None),
             required_roles=list(getattr(finding, "required_roles", []) or []),
+            spans=list(getattr(finding, "spans", []) or []),
+            rule_version=getattr(finding, "rule_version", ""),
+            category=getattr(finding, "category", ""),
+            allow_save=getattr(finding, "allow_save", True),
+            allow_generate=getattr(finding, "allow_generate", True),
+            allow_publish=getattr(finding, "allow_publish", True),
+            notification_message=getattr(finding, "notification_message", ""),
+            remediation_guidance=getattr(finding, "remediation_guidance", ""),
         )
 
     @staticmethod
