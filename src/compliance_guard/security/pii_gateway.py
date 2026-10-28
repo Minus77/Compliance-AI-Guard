@@ -33,6 +33,11 @@ from typing import Any, Callable
 
 from compliance_guard.domain.enums import SecurityAction, Severity
 from compliance_guard.domain.models import DomainModel, Entity, SecurityFinding
+from compliance_guard.policy.spans import (
+    OffsetSegment,
+    SanitizationIntegrityError,
+    TextOffsetMap,
+)
 
 from .coreference import CoreferenceResult, resolve_mentions
 from .token_service import TokenService
@@ -77,6 +82,7 @@ class SanitizeContext(DomainModel):
 class SanitizedContent(DomainModel):
     model_text: str
     spans: dict[str, list[str]]
+    offset_map: TextOffsetMap
     findings: list[SecurityFinding] = []
     entities: list[Entity] = []
     resolution: dict[str, Any] = {}
@@ -184,22 +190,62 @@ class PiiGateway:
         chosen.sort(key=lambda c: c.start)
 
         segments: list[str] = []
+        offset_segments: list[OffsetSegment] = []
         previous = 0
         running = 0
         masked: list[tuple[str, str, str]] = []
         for candidate in chosen:
-            segments.append(content[previous : candidate.start])
+            unchanged = content[previous : candidate.start]
+            segments.append(unchanged)
+            if unchanged:
+                offset_segments.append(
+                    OffsetSegment(
+                        original_start=previous,
+                        original_end=candidate.start,
+                        masked_start=running,
+                        masked_end=running + len(unchanged),
+                    )
+                )
             running += candidate.start - previous
             token = self._token_service.tokenize(
                 candidate.entity_type, candidate.canonical_id, context.tenant_id
             ).token
             segments.append(token)
+            offset_segments.append(
+                OffsetSegment(
+                    original_start=candidate.start,
+                    original_end=candidate.end,
+                    masked_start=running,
+                    masked_end=running + len(token),
+                    replaced=True,
+                )
+            )
             span = f"char:{running}-{running + len(token)}"
             masked.append((token, candidate.entity_type, span))
             running += len(token)
             previous = candidate.end
-        segments.append(content[previous:])
+        tail = content[previous:]
+        segments.append(tail)
+        if tail:
+            offset_segments.append(
+                OffsetSegment(
+                    original_start=previous,
+                    original_end=len(content),
+                    masked_start=running,
+                    masked_end=running + len(tail),
+                )
+            )
         model_text = "".join(segments)
+        try:
+            offset_map = TextOffsetMap(
+                original=content,
+                masked=model_text,
+                segments=offset_segments,
+            )
+        except ValueError as error:
+            raise SanitizationIntegrityError(
+                "sanitization produced an inconsistent offset map"
+            ) from error
 
         spans: dict[str, list[str]] = {}
         findings: list[SecurityFinding] = []
@@ -233,6 +279,7 @@ class PiiGateway:
         return SanitizedContent(
             model_text=model_text,
             spans=spans,
+            offset_map=offset_map,
             findings=findings,
             entities=entities,
             resolution=resolution_audit,

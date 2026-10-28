@@ -11,16 +11,26 @@ from .pii_gateway import (
     sanitize,
 )
 from .token_service import TokenRef, TokenService
+from compliance_guard.policy.spans import (
+    OffsetSegment,
+    SanitizationIntegrityError,
+    TextOffsetMap,
+    find_spans,
+)
 
 __all__ = [
     "AuthorizationService",
     "DlpScanner",
     "KnownIdentifier",
+    "OffsetSegment",
     "PiiGateway",
     "SanitizeContext",
     "SanitizedContent",
+    "SanitizationIntegrityError",
+    "TextOffsetMap",
     "TokenRef",
     "TokenService",
+    "find_spans",
     "reject_raw_pii",
     "sanitize",
     "scan_untrusted_content",
