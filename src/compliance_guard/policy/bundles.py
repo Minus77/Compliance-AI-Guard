@@ -122,8 +122,22 @@ class PolicyBundleStore:
         raw_rules = raw.pop("rules")
         self._bundle = PolicyBundle(rules=raw_rules, **raw)
         parse_bundle_rules(self._bundle)
+        self._lifecycle: Any | None = None
+
+    def bind_lifecycle(self, lifecycle: Any) -> None:
+        """Use one published rule snapshot across checks and the workbench."""
+        lifecycle.ensure_published(self._bundle)
+        self._lifecycle = lifecycle
 
     def load(self, version: str | None = None) -> PolicyBundle:
+        if self._lifecycle is not None:
+            if version is None:
+                return self._lifecycle.current()
+            try:
+                return self._lifecycle.bundle(version)
+            except KeyError:
+                if version != self._bundle.policy_version:
+                    raise ValueError(f"unknown policy bundle version {version!r}") from None
         if version is not None and version != self._bundle.policy_version:
             raise ValueError(f"unknown policy bundle version {version!r}")
         if not self._bundle.enabled:
@@ -131,6 +145,8 @@ class PolicyBundleStore:
         return self._bundle
 
     def current(self) -> PolicyBundle:
+        if self._lifecycle is not None:
+            return self._lifecycle.current()
         if not self._bundle.enabled:
             raise ValueError(f"policy bundle {self._bundle.policy_version} is disabled")
         return self._bundle

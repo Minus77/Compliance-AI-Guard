@@ -19,7 +19,21 @@ from __future__ import annotations
 import pathlib
 import tempfile
 
+import pytest
+
 from compliance_guard.security.sessions import SessionStore
+
+
+@pytest.fixture(autouse=True)
+def isolated_rule_store(monkeypatch, tmp_path):
+    import apps.api.main as api
+
+    monkeypatch.setattr(
+        api,
+        "_rule_store_path",
+        lambda: tmp_path / "rule_versions.json",
+        raising=False,
+    )
 
 
 def test_a_fresh_store_announces_through_the_shared_helper(capsys):

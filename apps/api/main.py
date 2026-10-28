@@ -78,7 +78,13 @@ from compliance_guard.llm.registry import (
     RouteValidationError,
 )
 from compliance_guard.llm.types import ModelConstraints, ModelRequest
-from compliance_guard.policy.bundles import PolicyBundleStore
+from compliance_guard.policy.bundles import PolicyBundleStore, parse_bundle_rules
+from compliance_guard.policy.publishing import RuleLifecycleStore
+from compliance_guard.policy.workbench import (
+    MAX_BATCH_CASES,
+    RuleCase,
+    RuleWorkbench,
+)
 from compliance_guard.review.feedback import FeedbackKind, FeedbackStore
 from compliance_guard.review.lifecycle import LifecycleStore, NotificationKind
 from compliance_guard.review.tasks import is_business_review
@@ -143,6 +149,11 @@ def _session_store_path():
     return _writable_data_dir() / "users.json"
 
 
+def _rule_store_path():
+    """Where published rule history lives, isolated from tests when overridden."""
+    return _writable_data_dir() / "rules" / "rule_versions.json"
+
+
 def _production_services() -> _Services:
     registry = ModelRegistry(
         profiles_path=CONFIG_DIR / "model_profiles.json",
@@ -173,6 +184,9 @@ def _production_services() -> _Services:
         queue=review_queue, auth=auth, ledger=ledger, metrics=metrics
     )
     policy_store = PolicyBundleStore()
+    rule_lifecycle = RuleLifecycleStore(path=_rule_store_path())
+    policy_store.bind_lifecycle(rule_lifecycle)
+    rule_workbench = RuleWorkbench(rule_lifecycle)
     label_facts_store = LabelFactsStore()
     precheck = PrecheckService(
         policy_store=policy_store,
@@ -208,6 +222,8 @@ def _production_services() -> _Services:
         gateway=gateway,
         registry=registry,
         policy_store=policy_store,
+        rule_lifecycle=rule_lifecycle,
+        rule_workbench=rule_workbench,
         label_facts_store=label_facts_store,
         retriever=EvidenceRetriever(),
         auth=auth,
@@ -508,6 +524,20 @@ def _require_case_view(auth: AuthorizationService, header: str | None) -> Actor:
     return actor
 
 
+def _require_rule_reader(auth: AuthorizationService, header: str | None) -> Actor:
+    actor = _actor_from_header(auth, header)
+    if actor.role not in {Role.AUDITOR, Role.COMPLIANCE_ADMIN}:
+        raise PermissionError(f"rule read denied for role {actor.role.value!r}")
+    return actor
+
+
+def _require_rule_manager(auth: AuthorizationService, header: str | None) -> Actor:
+    actor = _actor_from_header(auth, header)
+    if actor.role is not Role.COMPLIANCE_ADMIN:
+        raise PermissionError(f"rule management denied for role {actor.role.value!r}")
+    return actor
+
+
 def _require_owner_scope(actor: Actor, record: dict[str, Any]) -> None:
     """Field representatives may only read records they submitted.
 
@@ -658,6 +688,21 @@ class AttachmentPayload(BaseModel):
     mime_type: str = ""
     size_bytes: int = Field(default=0, ge=0)
     duration_seconds: float | None = Field(default=None, ge=0)
+
+
+class RuleTestPayload(BaseModel):
+    version: str
+    rule_id: str
+    case: RuleCase
+
+
+class RuleBatchPayload(BaseModel):
+    version: str
+    cases: list[RuleCase] = Field(default_factory=list, max_length=MAX_BATCH_CASES)
+
+
+class RuleVersionPayload(BaseModel):
+    version: str
 
 
 # ---------------------------------------------------------------------------
@@ -865,6 +910,137 @@ def create_app(services: Any | None = None) -> FastAPI:
         explaining the same term three different ways.
         """
         return services.glossary.payload(locale)
+
+    # -- rule workbench ------------------------------------------------------
+
+    @app.get("/api/rules")
+    def list_rules(x_demo_role: str | None = Header(default=None)) -> dict[str, Any]:
+        _require_rule_reader(services.auth, x_demo_role)
+        bundle = services.rule_lifecycle.current()
+        history = services.rule_lifecycle.history()
+        return {
+            "current_version": services.rule_lifecycle.current_version,
+            "rules": [
+                rule.model_dump(mode="json")
+                for rule in parse_bundle_rules(bundle)
+            ],
+            "history": [
+                {
+                    "version": item.version,
+                    "status": item.status.value,
+                    "created_at": item.created_at.isoformat(),
+                    "published_at": (
+                        item.published_at.isoformat()
+                        if item.published_at is not None
+                        else None
+                    ),
+                    "published_by": item.published_by,
+                    "rule_count": len(item.rules),
+                }
+                for item in history
+            ],
+        }
+
+    @app.post("/api/rules/test")
+    def test_rule(
+        payload: RuleTestPayload,
+        x_demo_role: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        _require_rule_manager(services.auth, x_demo_role)
+        rules = {
+            rule.rule_id: rule
+            for rule in parse_bundle_rules(
+                services.rule_lifecycle.bundle(payload.version)
+            )
+        }
+        if payload.rule_id not in rules:
+            raise KeyError(payload.rule_id)
+        result = services.rule_workbench.test_rule(
+            rules[payload.rule_id],
+            payload.case,
+        )
+        return result.model_dump(mode="json")
+
+    @app.post("/api/rules/evaluate")
+    def evaluate_rules(
+        payload: RuleBatchPayload,
+        x_demo_role: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        _require_rule_reader(services.auth, x_demo_role)
+        try:
+            result = services.rule_workbench.evaluate_batch(
+                payload.cases,
+                payload.version,
+            )
+        except ValueError as error:
+            raise ApiError("validation_error", 422, str(error)) from None
+        return result.model_dump(mode="json")
+
+    @app.post("/api/rules/publish")
+    def publish_rules(
+        payload: RuleVersionPayload,
+        x_demo_role: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = _require_rule_manager(services.auth, x_demo_role)
+        report = services.rule_lifecycle.test(payload.version)
+        if not report.passed:
+            messages = "; ".join(
+                f"{failure.rule_id}: {failure.message}"
+                for failure in report.failures
+            )
+            raise ApiError(
+                "validation_error",
+                422,
+                f"rule version did not pass its tests{': ' + messages if messages else ''}",
+            )
+        published = services.rule_lifecycle.publish(
+            payload.version,
+            actor.actor_id,
+        )
+        return {
+            "version": published.version,
+            "status": published.status.value,
+            "published_at": (
+                published.published_at.isoformat()
+                if published.published_at is not None
+                else None
+            ),
+            "published_by": published.published_by,
+        }
+
+    @app.post("/api/rules/rollback")
+    def rollback_rules(
+        payload: RuleVersionPayload,
+        x_demo_role: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = _require_rule_manager(services.auth, x_demo_role)
+        try:
+            restored = services.rule_lifecycle.rollback(
+                payload.version,
+                actor.actor_id,
+            )
+        except ValueError as error:
+            raise ApiError("validation_error", 422, str(error)) from None
+        return {
+            "version": restored.version,
+            "status": restored.status.value,
+            "published_at": (
+                restored.published_at.isoformat()
+                if restored.published_at is not None
+                else None
+            ),
+            "published_by": restored.published_by,
+        }
+
+    @app.get("/api/rules/diff")
+    def diff_rules(
+        before: str,
+        after: str,
+        x_demo_role: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        _require_rule_reader(services.auth, x_demo_role)
+        result = services.rule_workbench.diff_versions(before, after)
+        return result.model_dump(mode="json")
 
     # -- shared content checks -----------------------------------------------
 

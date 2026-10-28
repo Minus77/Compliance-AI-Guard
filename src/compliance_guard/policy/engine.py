@@ -420,6 +420,7 @@ class PolicyEngine:
         context: CaseContext,
         entrypoint: Entrypoint,
         offset_map: TextOffsetMap | None = None,
+        evidence_gap: bool = True,
     ) -> PolicyResult:
         """Evaluate scoped patterns against one text version with real spans."""
         if not context.case_id or not context.trace_id:
@@ -427,7 +428,7 @@ class PolicyEngine:
         pack = EvidencePack(
             snapshot_id="text-only",
             query=text,
-            evidence_gap=False,
+            evidence_gap=evidence_gap,
         )
         findings, reasons = self._scan_content(
             text,
@@ -440,13 +441,17 @@ class PolicyEngine:
         aggregated = calculate_severity(finding_list)
         content_version = context.content_version or _content_version(text)
         result = PolicyResult(
-            decision=self._aggregate_decision(finding_list, pack),
+            decision=self._aggregate_decision(
+                finding_list,
+                pack,
+                require_evidence=evidence_gap,
+            ),
             severity=aggregated.severity,
             findings=finding_list,
             policy_version=self._bundle.policy_version,
             reasons=reasons,
             routing=None,
-            evidence_gap=False,
+            evidence_gap=evidence_gap,
             rule_ids=[finding.rule_id for finding in finding_list],
             case_id=context.case_id,
             trace_id=context.trace_id,
@@ -654,14 +659,23 @@ class PolicyEngine:
         result.routing = route_review(result, self._raci, self._route_version)
         return result
 
-    def _aggregate_decision(self, findings: list[PolicyFinding], evidence_pack: EvidencePack) -> Decision:
+    def _aggregate_decision(
+        self,
+        findings: list[PolicyFinding],
+        evidence_pack: EvidencePack,
+        *,
+        require_evidence: bool = True,
+    ) -> Decision:
+        evidence_missing = evidence_pack.evidence_gap or (
+            require_evidence and not evidence_pack.items
+        )
         if not findings:
-            if evidence_pack.evidence_gap or not evidence_pack.items:
+            if evidence_missing:
                 return Decision.NEEDS_INFO
             return Decision.ALLOW
         top = min((finding.decision for finding in findings), key=lambda decision: _DECISION_RANK[decision])
         if top is Decision.ALLOW:
-            if evidence_pack.evidence_gap or not evidence_pack.items:
+            if evidence_missing:
                 top = Decision.NEEDS_INFO
             elif any(finding.severity in _HIGH_RISK for finding in findings):
                 top = Decision.HUMAN_REVIEW

@@ -80,6 +80,11 @@ class RuleLifecycleStore:
     def path(self) -> Path:
         return self._path
 
+    @property
+    def current_version(self) -> str | None:
+        with self._lock:
+            return self._current_version
+
     def _load(self) -> tuple[list[RuleVersion], str | None]:
         if not self._path.exists():
             return [], None
@@ -257,15 +262,40 @@ class RuleLifecycleStore:
             if self._current_version is None:
                 raise ValueError("no rule version has been published")
             _, snapshot = self._require(self._current_version)
-            return PolicyBundle(
-                policy_version=snapshot.version,
-                market=snapshot.market,
-                product_id=snapshot.product_id,
-                channel=snapshot.channel,
-                effective_from=snapshot.effective_from,
-                effective_until=snapshot.effective_until,
-                rules=dict(snapshot.rules),
-            )
+            return self._bundle_for(snapshot)
+
+    def bundle(self, version: str) -> PolicyBundle:
+        """Return one immutable snapshot, including drafts and prior releases."""
+        with self._lock:
+            _, snapshot = self._require(version)
+            return self._bundle_for(snapshot)
+
+    @staticmethod
+    def _bundle_for(snapshot: RuleVersion) -> PolicyBundle:
+        return PolicyBundle(
+            policy_version=snapshot.version,
+            market=snapshot.market,
+            product_id=snapshot.product_id,
+            channel=snapshot.channel,
+            effective_from=snapshot.effective_from,
+            effective_until=snapshot.effective_until,
+            rules=dict(snapshot.rules),
+        )
+
+    def ensure_published(self, bundle: PolicyBundle, actor_id: str = "system") -> RuleVersion:
+        """Seed an empty store with a tested initial release.
+
+        Existing releases are left untouched. This makes startup deterministic
+        without overwriting an administrator's persisted rule history.
+        """
+        with self._lock:
+            if self._current_version is not None:
+                return self._require(self._current_version)[1]
+            draft = self.draft(bundle)
+            report = self.test(draft.version)
+            if not report.passed:
+                raise ValueError("the initial rule bundle does not pass its tests")
+            return self.publish(draft.version, actor_id)
 
     def history(self) -> list[RuleVersion]:
         """Return immutable snapshots newest-first, including superseded releases."""

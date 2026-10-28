@@ -22,6 +22,8 @@ from compliance_guard.llm.registry import ModelRegistry
 from compliance_guard.llm.types import RawModelResult
 from compliance_guard.policy.bundles import PolicyBundleStore
 from compliance_guard.policy.engine import PolicyResult
+from compliance_guard.policy.publishing import RuleLifecycleStore
+from compliance_guard.policy.workbench import RuleWorkbench
 from compliance_guard.review.decisions import DecisionService
 from compliance_guard.review.feedback import FeedbackStore
 from compliance_guard.review.lifecycle import LifecycleStore
@@ -58,6 +60,7 @@ class AppServices:
         ledger=None,
         tracer=None,
         metrics=None,
+        rule_lifecycle=None,
     ) -> None:
         self.gateway = gateway
         self.registry = registry
@@ -68,6 +71,11 @@ class AppServices:
         self.ledger = ledger or AuditLedger()
         self.tracer = tracer or Tracer()
         self.metrics = metrics or Metrics()
+        self.rule_lifecycle = rule_lifecycle or RuleLifecycleStore(
+            path=self.ledger.path.parent / "rule_versions.json"
+        )
+        self.policy_store.bind_lifecycle(self.rule_lifecycle)
+        self.rule_workbench = RuleWorkbench(self.rule_lifecycle)
         self.review_queue = ReviewQueue(
             auth=self.auth, ledger=self.ledger, metrics=self.metrics
         )
@@ -136,6 +144,7 @@ class AppServices:
             ledger=self.ledger,
             tracer=self.tracer,
             metrics=self.metrics,
+            rule_lifecycle=self.rule_lifecycle,
         )
 
 
