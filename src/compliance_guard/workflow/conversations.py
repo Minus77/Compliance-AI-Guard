@@ -11,7 +11,12 @@ from pydantic import Field
 
 from compliance_guard.domain.enums import ContentType, Decision, Entrypoint, Severity
 from compliance_guard.domain.models import Actor, DomainModel
-from compliance_guard.workflow.checks import CheckFinding, CheckRequest, CheckService
+from compliance_guard.workflow.checks import (
+    CheckFinding,
+    CheckRequest,
+    CheckResult,
+    CheckService,
+)
 
 
 DEFAULT_SESSION_LIFETIME = timedelta(minutes=15)
@@ -27,6 +32,10 @@ class ConversationExpiredError(ValueError):
 
 class ConversationStaleError(ValueError):
     """The conversation was checked against a different rule version."""
+
+
+class ConversationPromptMismatchError(ValueError):
+    """The caller attempted to replace the server-held checked input."""
 
 
 class GuardInputRequest(DomainModel):
@@ -69,6 +78,21 @@ class GuardInputResult(DomainModel):
     policy_version: str
     content_version: str
     expires_at: datetime | None = None
+
+
+class GenerateRequest(DomainModel):
+    tenant_id: str = Field(min_length=1)
+    content: str
+    rule_version: str = ""
+
+
+class GenerationResult(DomainModel):
+    conversation_id: str
+    state: str
+    published_text: str = ""
+    findings: list[CheckFinding] = Field(default_factory=list)
+    model_called: bool = False
+    withdrawn: bool = False
 
 
 class ConversationStore:
@@ -139,10 +163,12 @@ class ConversationGuard:
         checks: CheckService,
         store: ConversationStore,
         policy_store,
+        gateway=None,
     ) -> None:
         self._checks = checks
         self._store = store
         self._policy_store = policy_store
+        self._gateway = gateway
 
     def guard_input(self, request: GuardInputRequest, actor: Actor) -> GuardInputResult:
         if actor.tenant_id and actor.tenant_id != request.tenant_id:
@@ -187,6 +213,7 @@ class ConversationGuard:
 
         constraints = {
             "content_type": request.content_type.value,
+            "content_subtype": request.content_subtype,
             "market": request.market,
             "language": request.language,
             "product_id": request.product_id,
@@ -236,15 +263,127 @@ class ConversationGuard:
             current_rule_version,
         )
 
+    def generate(
+        self,
+        conversation_id: str,
+        request: GenerateRequest,
+        actor: Actor,
+    ) -> GenerationResult:
+        """Generate once from checked server state and withhold unsafe output."""
+        from compliance_guard.agents.safe_generation import (
+            build_constrained_request,
+            extract_buffered_text,
+            generation_constraints,
+        )
+        from compliance_guard.policy.bundles import parse_bundle_rules
+
+        if actor.tenant_id and actor.tenant_id != request.tenant_id:
+            raise PermissionError("actor cannot generate for another tenant")
+        current_rules = self._policy_store.current()
+        if request.rule_version and request.rule_version != current_rules.policy_version:
+            raise ConversationStaleError(conversation_id)
+
+        session = self._store.get(
+            conversation_id,
+            request.tenant_id,
+            actor.actor_id,
+            current_rules.policy_version,
+        )
+        if not session.inspected_content_matches(request.content):
+            raise ConversationPromptMismatchError(conversation_id)
+
+        model_called = False
+        candidate = ""
+        try:
+            if self._gateway is None:
+                raise RuntimeError("generation gateway is unavailable")
+            model_request = build_constrained_request(
+                session,
+                parse_bundle_rules(current_rules),
+            )
+            model_called = True
+            raw = self._gateway.complete(
+                "conversation_generation",
+                model_request,
+                generation_constraints(session),
+            )
+            candidate = extract_buffered_text(raw)
+            findings = self._check_output(session, candidate)
+            may_publish = (
+                findings.decision is Decision.ALLOW
+                and all(finding.allow_publish for finding in findings.findings)
+            )
+            if not may_publish:
+                return GenerationResult(
+                    conversation_id=conversation_id,
+                    state="output_withdrawn",
+                    findings=self._safe_findings(findings.findings),
+                    model_called=True,
+                    withdrawn=bool(candidate),
+                )
+            return GenerationResult(
+                conversation_id=conversation_id,
+                state="published",
+                published_text=candidate,
+                findings=self._safe_findings(findings.findings),
+                model_called=True,
+                withdrawn=False,
+            )
+        except Exception:
+            # Provider details and candidate text stay out of the response. A
+            # failed guard is treated as a withdrawal, never as a soft warning.
+            return GenerationResult(
+                conversation_id=conversation_id,
+                state="failed_safe",
+                model_called=model_called,
+                withdrawn=bool(candidate),
+            )
+
+    def _check_output(self, session: ConversationSession, text: str) -> CheckResult:
+        constraints = session.allowed_constraints
+        return self._checks.precheck(
+            CheckRequest(
+                tenant_id=session.tenant_id,
+                content_type=ContentType(
+                    str(
+                        constraints.get("content_type")
+                        or ContentType.AI_CONVERSATION.value
+                    )
+                ),
+                content_subtype=str(constraints.get("content_subtype") or ""),
+                market=str(constraints.get("market") or "CN"),
+                language=str(constraints.get("language") or "zh-CN"),
+                product_id=str(constraints.get("product_id") or ""),
+                therapeutic_area=str(constraints.get("therapeutic_area") or ""),
+                content=text,
+                rule_version=session.rule_version,
+                client_content_version=self._checks.content_version(text),
+            ),
+            entrypoint=Entrypoint.OUTPUT,
+        )
+
+    @staticmethod
+    def _safe_findings(findings: list[CheckFinding]) -> list[CheckFinding]:
+        """Expose rule provenance without echoing withdrawn model fragments."""
+        safe: list[CheckFinding] = []
+        for finding in findings:
+            item = finding.model_copy(deep=True)
+            item.matched_terms = []
+            safe.append(item)
+        return safe
+
 
 __all__ = [
     "ConversationExpiredError",
     "ConversationGuard",
     "ConversationNotFoundError",
+    "ConversationPromptMismatchError",
     "ConversationSession",
     "ConversationStaleError",
     "ConversationStore",
     "DEFAULT_SESSION_LIFETIME",
+    "GenerateRequest",
+    "GenerationResult",
     "GuardInputRequest",
     "GuardInputResult",
 ]

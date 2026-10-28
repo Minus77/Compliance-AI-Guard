@@ -67,3 +67,12 @@ class RawModelResult(BaseModel):
     output_tokens: int = Field(default=0, ge=0)
     fallback_used: bool = False
     error_category: str | None = None
+
+
+class ModelTextOutput(BaseModel):
+    """Strict text envelope accepted from a conversational model response."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1)
+    refused: bool = False

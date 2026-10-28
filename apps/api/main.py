@@ -108,8 +108,10 @@ from compliance_guard.workflow.conversations import (
     ConversationExpiredError,
     ConversationGuard,
     ConversationNotFoundError,
+    ConversationPromptMismatchError,
     ConversationStaleError,
     ConversationStore,
+    GenerateRequest,
     GuardInputRequest,
 )
 from compliance_guard.workflow.precheck import PrecheckService
@@ -198,6 +200,7 @@ def _production_services() -> _Services:
         checks=checks,
         store=ConversationStore(),
         policy_store=policy_store,
+        gateway=gateway,
     )
     return _Services(
         gateway=gateway,
@@ -952,6 +955,47 @@ def create_app(services: Any | None = None) -> FastAPI:
                 "rule version changed; run the input guard again",
             ) from None
         return session.model_dump(mode="json")
+
+    @app.post("/api/conversations/{conversation_id}/generate")
+    def generate_guarded_response(
+        conversation_id: str,
+        payload: GenerateRequest,
+        response: Response,
+        x_demo_role: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        actor = _actor_from_header(services.auth, x_demo_role)
+        try:
+            result = services.conversations.generate(
+                conversation_id,
+                payload,
+                actor,
+            )
+        except ConversationNotFoundError:
+            raise KeyError(conversation_id) from None
+        except ConversationExpiredError:
+            raise ApiError(
+                "conversation_expired",
+                410,
+                "conversation session expired; run the input guard again",
+            ) from None
+        except ConversationPromptMismatchError:
+            raise ApiError(
+                "conversation_prompt_mismatch",
+                409,
+                "generation must use the input checked by the server",
+            ) from None
+        except ConversationStaleError:
+            raise ApiError(
+                "conversation_requires_recheck",
+                409,
+                "rule version changed; run the input guard again",
+            ) from None
+        except PermissionError as error:
+            raise ApiError("forbidden", 403, str(error)) from None
+
+        if result.state == "failed_safe":
+            response.status_code = 503
+        return result.model_dump(mode="json")
 
     # -- cases ---------------------------------------------------------------
 

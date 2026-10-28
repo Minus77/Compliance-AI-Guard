@@ -119,6 +119,7 @@ class AppServices:
             checks=self.checks,
             store=ConversationStore(),
             policy_store=policy_store,
+            gateway=gateway,
         )
 
     def with_gateway(self, gateway):
