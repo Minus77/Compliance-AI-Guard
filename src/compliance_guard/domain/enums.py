@@ -136,6 +136,12 @@ class ContentType(str, Enum):
     OTHER = "other"
 
 
+class Entrypoint(str, Enum):
+    CONTENT = "content"
+    INPUT = "input"
+    OUTPUT = "output"
+
+
 _ROLE_ALIASES = {
     "field_rep": Role.AUTHOR,
     "representative": Role.AUTHOR,

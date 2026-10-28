@@ -125,6 +125,20 @@ class DomainModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+class CharacterSpan(DomainModel):
+    """A half-open Unicode character range in an identified text version."""
+
+    start: int = Field(ge=0, strict=True)
+    end: int = Field(ge=0, strict=True)
+    quote_hash: str | None = None
+
+    @model_validator(mode="after")
+    def _ordered_range(self) -> "CharacterSpan":
+        if self.end < self.start:
+            raise ValueError("span end must not precede its start")
+        return self
+
+
 class ContentPart(DomainModel):
     type: ContentPartType
     ref: str | None = None
@@ -688,6 +702,7 @@ __all__ = [
     "AuditEvent",
     "CandidateFinding",
     "CaseContext",
+    "CharacterSpan",
     "CheckCaseRequest",
     "CheckCaseResponse",
     "ContentPart",

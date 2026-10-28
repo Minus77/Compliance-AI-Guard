@@ -11,34 +11,88 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
-from compliance_guard.domain.enums import Decision, Role, Severity
-from compliance_guard.domain.models import DomainModel, PolicyBundle
+from compliance_guard.domain.enums import (
+    ContentType,
+    Decision,
+    Entrypoint,
+    Role,
+    Severity,
+)
+from compliance_guard.domain.models import CharacterSpan, DomainModel, PolicyBundle
+
+
+class RuleScope(DomainModel):
+    """Context in which a rule applies; empty dimensions are unrestricted."""
+
+    tenant_ids: list[str] = Field(default_factory=list)
+    markets: list[str] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    product_ids: list[str] = Field(default_factory=list)
+    therapeutic_areas: list[str] = Field(default_factory=list)
+    content_types: list[ContentType] = Field(default_factory=list)
+    entrypoints: list[Entrypoint] = Field(default_factory=list)
+
+
+class RuleTestCase(DomainModel):
+    text: str
+    expected_match: bool
+    expected_spans: list[CharacterSpan] = Field(default_factory=list)
 
 
 class PolicyRule(DomainModel):
     """A single deterministic rule with explicit condition patterns."""
 
-    rule_id: str
-    type: str
+    rule_id: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    description: str = ""
+    category: str = ""
+    type: str = Field(min_length=1)
     severity: Severity
     decision: Decision
+    scope: RuleScope = Field(default_factory=RuleScope)
     patterns: list[str] = Field(default_factory=list)
     aliases: list[str] = Field(default_factory=list)
+    conditions: dict[str, Any] = Field(default_factory=dict)
+    span_locator: str = "char"
+    allow_save: bool = True
+    allow_generate: bool = True
+    allow_publish: bool = True
+    notification_message: str = ""
+    remediation_guidance: str = ""
     required_roles: list[Role] = Field(default_factory=list)
     sla_label: str = ""
     next_action: str = ""
+    suppression_policy: str = "none"
+    evidence_requirements: list[str] = Field(default_factory=list)
+    test_cases: list[RuleTestCase] = Field(default_factory=list)
     requires_evidence: bool = True
     evidence_gap_acceptable: bool = False
     reversible: bool = True
+
+    @model_validator(mode="after")
+    def _protect_redlines_and_test_cases(self) -> "PolicyRule":
+        if self.suppression_policy.casefold() == "silent" and (
+            self.severity is Severity.S0 or self.decision is Decision.BLOCKED
+        ):
+            raise ValueError("S0 and blocked rules cannot use silent suppression")
+        for case in self.test_cases:
+            for span in case.expected_spans:
+                if span.end > len(case.text):
+                    raise ValueError("test case span exceeds its text")
+        return self
 
 
 def parse_bundle_rules(bundle: PolicyBundle) -> list[PolicyRule]:
     """Validate and convert a bundle's raw rule map into typed rules."""
     rules: list[PolicyRule] = []
     for rule_id, raw in bundle.rules.items():
-        rules.append(PolicyRule(rule_id=rule_id, **raw))
+        values = dict(raw)
+        values.setdefault("version", str(raw.get("version", bundle.policy_version)))
+        values.setdefault("title", str(raw.get("title") or raw.get("type") or rule_id))
+        rules.append(PolicyRule(rule_id=rule_id, **values))
     return rules
 
 
@@ -77,4 +131,4 @@ class PolicyBundleStore:
         return self._bundle
 
 
-__all__ = ["PolicyBundleStore", "PolicyRule", "parse_bundle_rules"]
+__all__ = ["PolicyBundleStore", "PolicyRule", "RuleScope", "RuleTestCase", "parse_bundle_rules"]
