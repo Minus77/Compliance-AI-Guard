@@ -25,17 +25,21 @@
       <span class="badge badge-mode" id="mode-badge" data-i18n="header.modeMock">离线演示模式</span>
     </div>
     <nav class="workspace-nav" aria-label="Workspaces"
-         data-i18n-title="nav.shortcutHint" title="按 1–5 可快速切换工作台">
-      <button type="button" class="nav-btn is-active" data-workspace="representative"
-              aria-pressed="true" data-i18n="nav.representative">代表工作台</button>
-      <button type="button" class="nav-btn" data-workspace="reviewer"
-              aria-pressed="false" data-i18n="nav.reviewer">审核工作台</button>
-      <button type="button" class="nav-btn" data-workspace="policy"
-              aria-pressed="false" data-i18n="nav.policy">模型策略</button>
-      <button type="button" class="nav-btn" data-workspace="records"
-              aria-pressed="false" data-i18n="nav.records">我的记录</button>
-      <button type="button" class="nav-btn" data-workspace="governance"
-              aria-pressed="false" data-i18n="nav.governance">质量与审计</button>
+         data-i18n-title="nav.shortcutHint" title="按 1–7 可快速切换工作台">
+      <button type="button" class="nav-btn is-active" data-workspace="overview"
+              aria-pressed="true" data-i18n="nav.overview">总览</button>
+      <button type="button" class="nav-btn" data-workspace="content_check"
+              aria-pressed="false" data-i18n="nav.content_check">内容检查</button>
+      <button type="button" class="nav-btn" data-workspace="conversation_guard"
+              aria-pressed="false" data-i18n="nav.conversation_guard">AI 对话防护</button>
+      <button type="button" class="nav-btn" data-workspace="reviews"
+              aria-pressed="false" data-i18n="nav.reviews">专业审核</button>
+      <button type="button" class="nav-btn" data-workspace="rules"
+              aria-pressed="false" data-i18n="nav.rules">规则</button>
+      <button type="button" class="nav-btn" data-workspace="quality_audit"
+              aria-pressed="false" data-i18n="nav.quality_audit">质量与审计</button>
+      <button type="button" class="nav-btn" data-workspace="settings"
+              aria-pressed="false" data-i18n="nav.settings">设置</button>
     </nav>
     <div class="header-controls">
       <button type="button" class="notif-button" id="notif-button"
@@ -131,14 +135,26 @@
   </section>
 
   <main class="app-main">
-    <!-- ================= Representative workspace ================= -->
-    <section id="workspace-representative" class="workspace" aria-labelledby="rep-title">
+    <!-- ================= Overview workspace ================= -->
+    <section id="workspace-overview" class="workspace" aria-labelledby="overview-title">
       <div class="ws-head">
-        <h2 id="rep-title" data-i18n="rep.title">拜访记录合规预检</h2>
-        <p class="ws-lead" data-i18n="rep.lead">在内容对外发出之前，由服务端判定可否放行。</p>
+        <h2 id="overview-title" data-i18n="overview.title">合规工作总览</h2>
+        <p class="ws-lead" data-i18n="overview.lead">从业务记录、独立内容或 AI 对话进入同一套服务端合规判断。</p>
       </div>
-      <div id="rep-gate" class="gate-panel" hidden></div>
-      <div id="rep-body">
+      <div id="overview-gate" class="gate-panel" hidden></div>
+      <div id="overview-body">
+      <section class="overview-intro" aria-labelledby="rep-title">
+        <div>
+          <h3 id="rep-title" data-i18n="rep.title">业务记录合规预检</h3>
+          <p class="hint" data-i18n="rep.lead">在内容对外发出之前，由服务端判定可否放行。</p>
+        </div>
+        <div class="overview-entry-links">
+          <button type="button" class="btn btn-secondary btn-sm" data-jump-workspace="content_check"
+                  data-i18n="overview.openContentCheck">检查独立内容</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-jump-workspace="conversation_guard"
+                  data-i18n="overview.openConversation">测试 AI 对话</button>
+        </div>
+      </section>
       <form id="check-form" class="check-form">
         <fieldset class="panel panel-source">
           <legend data-i18n="rep.sourceSection">内容来源</legend>
@@ -418,10 +434,161 @@
         <h3 data-i18n="result.trace">审计链路</h3>
         <div id="rep-trace-body"></div>
       </section>
+      <section class="records-summary" aria-labelledby="records-title">
+        <div class="ws-head compact">
+          <h3 id="records-title" data-i18n="records.title">我的记录</h3>
+          <p class="ws-lead" data-i18n="records.lead">提交过的内容都在这里，可以查看结论、跟进进度，或基于原稿修订后重新提交。</p>
+        </div>
+        <div id="records-body">
+          <div class="records-toolbar">
+            <label class="ctl-field" for="records-filter">
+              <span class="ctl-label" data-i18n="records.filter">按结论筛选</span>
+              <select id="records-filter">
+                <option value="" data-i18n="records.filterAll">全部</option>
+                <option value="allow" data-i18n="decision.allow">可以提交</option>
+                <option value="needs_info" data-i18n="decision.needs_info">还差一点信息</option>
+                <option value="human_review" data-i18n="decision.human_review">需要专业同事看一眼</option>
+                <option value="blocked" data-i18n="decision.blocked">不能这样发出去</option>
+              </select>
+            </label>
+            <button type="button" class="btn btn-secondary" id="records-refresh"
+                    data-i18n="records.refresh">刷新</button>
+          </div>
+          <div class="table-wrap">
+            <table id="records-table" class="data-table">
+              <thead>
+                <tr>
+                  <th data-i18n="records.time">提交时间</th>
+                  <th data-i18n="records.outcome">结论</th>
+                  <th data-i18n="records.product">产品</th>
+                  <th data-i18n="records.findings">涉及问题</th>
+                  <th data-i18n="records.action">操作</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="muted small" id="records-empty" data-i18n="records.empty">还没有提交过记录。</p>
+          <div class="actions-row">
+            <button type="button" class="btn btn-ghost" id="records-more"
+                    data-i18n="records.more" hidden>加载更多</button>
+          </div>
+        </div>
+      </section>
+      </div>
+    </section>
+    <!-- ================= Content check workspace ================= -->
+    <section id="workspace-content_check" class="workspace" aria-labelledby="content-check-title" hidden>
+      <div class="ws-head">
+        <h2 id="content-check-title" data-i18n="contentCheck.title">独立内容检查</h2>
+        <p class="ws-lead" data-i18n="contentCheck.lead">检查任意待发布内容。结果绑定到本次提交的原文版本；修改正文后旧位置标记不会继续显示。</p>
+      </div>
+      <div id="rep-gate" class="gate-panel" hidden></div>
+      <div id="rep-body">
+        <div id="content-check" class="guard-workspace">
+          <form id="content-check-form" class="check-form" aria-labelledby="content-check-title">
+            <fieldset class="panel">
+              <legend data-i18n="contentCheck.context">检查上下文</legend>
+              <label class="fld" for="content-check-type">
+                <span class="fld-label" data-i18n="contentCheck.type">内容类型</span>
+                <select id="content-check-type">
+                  <option value="promotional_content" data-i18n="contentType.promotional_content">推广内容</option>
+                  <option value="medical_information_request" data-i18n="contentType.medical_information_request">医学信息咨询</option>
+                  <option value="customer_interaction_note" data-i18n="contentType.customer_interaction_note">客户互动记录</option>
+                  <option value="other" data-i18n="contentType.other">其他内容</option>
+                </select>
+              </label>
+              <p class="hint" data-i18n="contentCheck.contextHint">市场、语言和产品沿用总览中的业务上下文。</p>
+            </fieldset>
+            <fieldset class="panel panel-narrative">
+              <legend data-i18n="contentCheck.editorSection">待检查内容</legend>
+              <label class="fld fld-block" for="content-check-editor">
+                <span class="fld-label" data-i18n="contentCheck.editorLabel">内容正文</span>
+                <textarea id="content-check-editor" rows="10"
+                          data-i18n-placeholder="contentCheck.placeholder"
+                          placeholder="粘贴或输入需要检查的正文。"></textarea>
+              </label>
+              <p class="hint" data-i18n="contentCheck.editorHint">服务端返回的字符区间只适用于提交时的原文；编辑器变化后需要重新检查。</p>
+              <div class="actions-row">
+                <button type="submit" class="btn btn-primary" id="content-check-submit"
+                        data-i18n="contentCheck.submit">检查内容</button>
+                <span class="loading" id="content-check-loading" hidden
+                      aria-live="polite" data-i18n="contentCheck.checking">检查中…</span>
+              </div>
+              <p class="field-error" id="content-check-error" role="alert" hidden></p>
+            </fieldset>
+          </form>
+          <section id="content-check-result" class="guard-result" hidden
+                   aria-live="polite" aria-labelledby="content-check-result-title">
+            <div class="guard-result-head">
+              <h3 id="content-check-result-title" data-i18n="contentCheck.result">检查结果</h3>
+              <span class="decision-pill" id="content-check-decision"></span>
+              <span class="severity-chip" id="content-check-severity"></span>
+            </div>
+            <dl class="guard-meta">
+              <div><dt data-i18n="contentCheck.checkId">检查编号</dt><dd class="mono" id="content-check-id"></dd></div>
+              <div><dt data-i18n="contentCheck.policyVersion">规则版本</dt><dd class="mono" id="content-check-policy"></dd></div>
+              <div><dt data-i18n="contentCheck.contentVersion">内容版本</dt><dd class="mono" id="content-check-version"></dd></div>
+              <div><dt data-i18n="contentCheck.status">状态</dt><dd class="mono" id="content-check-status"></dd></div>
+            </dl>
+            <p class="guard-status" id="content-check-state" role="status"></p>
+            <div id="content-spans" class="structured-text"></div>
+            <ul id="content-check-findings" class="findings-list"></ul>
+            <div class="actions-row">
+              <button type="button" class="btn btn-secondary btn-sm" id="content-recheck" hidden
+                      data-i18n="contentCheck.recheck">正文已变化，重新检查</button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+    <!-- ================= AI conversation workspace ================= -->
+    <section id="workspace-conversation_guard" class="workspace" aria-labelledby="conversation-title" hidden>
+      <div class="ws-head">
+        <h2 id="conversation-title" data-i18n="conversationGuard.title">AI 对话防护</h2>
+        <p class="ws-lead" data-i18n="conversationGuard.lead">输入检查和输出检查是两次独立判断。输入通过后才建立短期会话，只有服务端发布的安全文本会显示在对话中。</p>
+      </div>
+      <div id="conv-gate" class="gate-panel" hidden></div>
+      <div id="conv-body">
+        <div id="conversation-guard" class="guard-workspace conversation-workspace">
+          <form id="conversation-form" class="check-form" aria-labelledby="conversation-title">
+            <fieldset class="panel panel-narrative">
+              <legend data-i18n="conversationGuard.inputSection">对话输入</legend>
+              <label class="fld fld-block" for="conv-editor">
+                <span class="fld-label" data-i18n="conversationGuard.inputLabel">要发送给 AI 的内容</span>
+                <textarea id="conv-editor" rows="8"
+                          data-i18n-placeholder="conversationGuard.placeholder"
+                          placeholder="输入问题或指令。"></textarea>
+              </label>
+              <p class="hint" data-i18n="conversationGuard.inputHint">输入变化会终止当前会话资格，必须再次完成输入检查。</p>
+              <div class="actions-row">
+                <button type="button" class="btn btn-primary" id="conv-guard-submit"
+                        data-i18n="conversationGuard.guardInput">检查并建立会话</button>
+                <button type="button" class="btn btn-secondary" id="conv-generate" hidden
+                        data-i18n="conversationGuard.generate">生成安全回复</button>
+                <span class="loading" id="conv-loading" hidden aria-live="polite"
+                      data-i18n="conversationGuard.working">处理中…</span>
+              </div>
+              <p class="field-error" id="conv-error" role="alert" hidden></p>
+            </fieldset>
+          </form>
+          <section class="conversation-panel" aria-live="polite">
+            <div class="guard-result-head">
+              <h3 data-i18n="conversationGuard.response">AI 回复</h3>
+              <span class="decision-pill" id="conv-state-badge"></span>
+            </div>
+            <p class="conversation-state" id="conv-state"></p>
+            <div id="conversation-body" class="conversation-body"></div>
+            <dl class="guard-meta" id="conv-meta" hidden>
+              <div><dt data-i18n="conversationGuard.session">会话编号</dt><dd class="mono" id="conv-id"></dd></div>
+              <div><dt data-i18n="conversationGuard.policyVersion">规则版本</dt><dd class="mono" id="conv-policy"></dd></div>
+            </dl>
+          </section>
+        </div>
       </div>
     </section>
     <!-- ================= Reviewer workspace ================= -->
-    <section id="workspace-reviewer" class="workspace" aria-labelledby="rev-title" hidden>
+    <section id="workspace-reviews" class="workspace" aria-labelledby="rev-title" hidden>
       <div class="ws-head">
         <h2 id="rev-title" data-i18n="rev.title">专业审核</h2>
       </div>
@@ -440,11 +607,11 @@
         </div>
       </div>
     </section>
-    <!-- ================= Model policy workspace ================= -->
-    <section id="workspace-policy" class="workspace" aria-labelledby="policy-title" hidden>
+    <!-- ================= Settings workspace ================= -->
+    <section id="workspace-settings" class="workspace" aria-labelledby="settings-title" hidden>
       <div class="ws-head">
-        <h2 id="policy-title" data-i18n="policy.title">模型策略</h2>
-        <p class="ws-lead" data-i18n="policy.lead">模型档案与任务路由均为版本化配置。</p>
+        <h2 id="settings-title" data-i18n="settings.title">设置</h2>
+        <p class="ws-lead" data-i18n="settings.lead">管理模型档案、任务路由和版本化发布配置。</p>
       </div>
       <div id="policy-gate" class="gate-panel" hidden></div>
       <div id="policy-body">
@@ -514,51 +681,46 @@
         </div>
       </div>
     </section>
-    <!-- ================= My records workspace ================= -->
-    <section id="workspace-records" class="workspace" aria-labelledby="records-title" hidden>
+    <!-- ================= Rules workspace ================= -->
+    <section id="workspace-rules" class="workspace" aria-labelledby="rules-title" hidden>
       <div class="ws-head">
-        <h2 id="records-title" data-i18n="records.title">我的记录</h2>
-        <p class="ws-lead" data-i18n="records.lead">提交过的内容都在这里，可以查看结论、跟进进度，或基于原稿修订后重新提交。</p>
+        <h2 id="rules-title" data-i18n="rules.title">规则</h2>
+        <p class="ws-lead" data-i18n="rules.lead">查看当前生效的确定性规则和版本历史。规则发布必须通过测试门禁。</p>
       </div>
-      <div id="records-gate" class="gate-panel" hidden></div>
-      <div id="records-body">
-        <div class="records-toolbar">
-          <label class="ctl-field" for="records-filter">
-            <span class="ctl-label" data-i18n="records.filter">按结论筛选</span>
-            <select id="records-filter">
-              <option value="" data-i18n="records.filterAll">全部</option>
-              <option value="allow" data-i18n="decision.allow">可以提交</option>
-              <option value="needs_info" data-i18n="decision.needs_info">还差一点信息</option>
-              <option value="human_review" data-i18n="decision.human_review">需要专业同事看一眼</option>
-              <option value="blocked" data-i18n="decision.blocked">不能这样发出去</option>
-            </select>
-          </label>
-          <button type="button" class="btn btn-secondary" id="records-refresh"
-                  data-i18n="records.refresh">刷新</button>
+      <div id="rules-gate" class="gate-panel" hidden></div>
+      <div id="rules-body">
+        <div class="rules-toolbar">
+          <span class="guard-stat"><span data-i18n="rules.currentVersion">当前版本</span>
+            <strong class="mono" id="rules-current-version">—</strong></span>
+          <button type="button" class="btn btn-secondary" id="rules-refresh"
+                  data-i18n="rules.refresh">刷新规则</button>
         </div>
-        <div class="table-wrap">
-          <table id="records-table" class="data-table">
-            <thead>
-              <tr>
-                <th data-i18n="records.time">提交时间</th>
-                <th data-i18n="records.outcome">结论</th>
-                <th data-i18n="records.product">产品</th>
-                <th data-i18n="records.findings">涉及问题</th>
-                <th data-i18n="records.action">操作</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-        <p class="muted small" id="records-empty" data-i18n="records.empty">还没有提交过记录。</p>
-        <div class="actions-row">
-          <button type="button" class="btn btn-ghost" id="records-more"
-                  data-i18n="records.more" hidden>加载更多</button>
-        </div>
+        <p class="field-error" id="rules-error" role="alert" hidden></p>
+        <section class="policy-block">
+          <h3 data-i18n="rules.activeTitle">生效规则</h3>
+          <div class="table-wrap">
+            <table id="rules-table" class="data-table">
+              <thead>
+                <tr>
+                  <th data-i18n="rules.ruleId">规则编号</th>
+                  <th data-i18n="rules.findings">风险类型</th>
+                  <th data-i18n="rules.severity">最高风险等级</th>
+                  <th data-i18n="rules.decision">判定</th>
+                  <th data-i18n="rules.pattern">匹配模式</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="policy-block">
+          <h3 data-i18n="rules.historyTitle">版本历史</h3>
+          <ul id="rules-history" class="history-list"></ul>
+        </section>
       </div>
     </section>
     <!-- ================= Quality & audit workspace ================= -->
-    <section id="workspace-governance" class="workspace" aria-labelledby="gov-title" hidden>
+    <section id="workspace-quality_audit" class="workspace" aria-labelledby="gov-title" hidden>
       <div class="ws-head">
         <h2 id="gov-title" data-i18n="gov.title">质量与审计</h2>
         <p class="ws-lead" data-i18n="gov.lead">面向 QA、审计与法规事务的检查就绪视图。</p>

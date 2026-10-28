@@ -217,9 +217,10 @@ def test_reduced_motion_is_respected(client):
 # -- J4 + new surfaces: records, notifications, glossary --------------------
 
 
-def test_my_records_workspace_exists(client):
+def test_my_records_are_available_from_overview(client):
     html = _html(client)
-    assert 'data-workspace="records"' in html
+    assert 'data-workspace="overview"' in html
+    assert 'class="records-summary"' in html
     js = _js(client)
     assert "/api/cases?scope=mine" in js or "/api/cases" in js
 

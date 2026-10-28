@@ -1,4 +1,4 @@
-/* Compliance AI Guard - three-workspace UI (no build chain).
+/* Compliance AI Guard - seven-workspace UI (no build chain).
  *
  * Rendering rules that matter here:
  *   - Server codes are shown as a readable phrase PLUS the raw code, never the
@@ -26,7 +26,7 @@
   var capabilities = {};        // from GET /api/permissions
   var publishedConfig = null;
   var draftPayload = null;
-  var currentWorkspace = "representative";
+  var currentWorkspace = "overview";
   var attachments = [];         // registered content parts
   var connectors = [];
   var sourceRecords = [];
@@ -35,6 +35,18 @@
   var policyMessage = null;
   var selectedScenario = null;
   var loadedRecord = null;
+  var currentCheckId = null;
+  var currentCheckSnapshot = "";
+  var currentContentVersion = null;
+  var currentCheckResult = null;
+  var currentConversationId = null;
+  var checkedConversationInput = "";
+  var conversationPolicyVersion = "";
+  var currentConversationResult = null;
+  var preservedEditorState = null;
+  var contentPrecheckTimer = null;
+  var contentDraftTimer = null;
+  var conversationDraftTimer = null;
 
   // Scenario text stays Chinese in every locale: server-side detection matches
   // Chinese keywords (皮疹 / 昏迷 / 忽略所有规则) and the evidence corpus is
@@ -60,30 +72,44 @@
 
   // Which capability each workspace needs. Sourced from the server matrix.
   var WORKSPACE_CAPABILITY = {
-    representative: "view_case_summary",
-    records: "view_case_summary",
-    reviewer: "review_case",
-    policy: "architecture_review",
-    governance: "audit_export"
+    overview: "view_case_summary",
+    content_check: "view_case_summary",
+    conversation_guard: "view_case_summary",
+    reviews: "review_case",
+    rules: "architecture_review",
+    quality_audit: "audit_export",
+    settings: "architecture_review"
   };
 
   // Workspace id -> DOM id prefix for its gate/body pair.
   var WORKSPACE_PREFIX = {
-    representative: "rep",
-    records: "records",
-    reviewer: "rev",
-    policy: "policy",
-    governance: "gov"
+    overview: "overview",
+    content_check: "rep",
+    conversation_guard: "conv",
+    reviews: "rev",
+    rules: "rules",
+    quality_audit: "gov",
+    settings: "policy"
   };
-  var WORKSPACES = ["representative", "records", "reviewer", "policy", "governance"];
+  var WORKSPACES = [
+    "overview",
+    "content_check",
+    "conversation_guard",
+    "reviews",
+    "rules",
+    "quality_audit",
+    "settings"
+  ];
 
   // Digit -> workspace, in the order they appear in the nav.
   var WORKSPACE_KEYS = {
-    "1": "representative",
-    "2": "records",
-    "3": "reviewer",
-    "4": "policy",
-    "5": "governance"
+    "1": "overview",
+    "2": "content_check",
+    "3": "conversation_guard",
+    "4": "reviews",
+    "5": "rules",
+    "6": "quality_audit",
+    "7": "settings"
   };
 
   var SEVERITIES = ["S0", "S1", "S2", "S3"];
@@ -445,6 +471,12 @@
   });
 
   function switchWorkspace(workspace) {
+    if (!Object.prototype.hasOwnProperty.call(WORKSPACE_CAPABILITY, workspace)) {
+      return;
+    }
+    if (!allowed(WORKSPACE_CAPABILITY[workspace])) {
+      return;
+    }
     currentWorkspace = workspace;
     navButtons.forEach(function (b) {
       var active = b.getAttribute("data-workspace") === workspace;
@@ -454,12 +486,27 @@
     WORKSPACES.forEach(function (name) {
       el("workspace-" + name).hidden = name !== workspace;
     });
-    if (workspace === "records" && allowed("view_case_summary")) { loadRecords({ reset: true }); }
-    if (workspace === "reviewer" && allowed("review_case")) { loadReviewQueue(); }
-    if (workspace === "policy" && allowed("architecture_review")) { loadConfig(); }
-    if (workspace === "governance" && allowed("audit_export")) { loadGovernance(); }
-    if (workspace === "representative") { hide("rep-trace"); }
+    if (workspace === "overview") {
+      hide("rep-trace");
+      loadRecords({ reset: true });
+    }
+    if (workspace === "reviews") { loadReviewQueue(); }
+    if (workspace === "rules") { loadRules(); }
+    if (workspace === "quality_audit") { loadGovernance(); }
+    if (workspace === "settings") { loadConfig(); }
   }
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll("[data-jump-workspace]"),
+    function (button) {
+      button.addEventListener("click", function () {
+        var target = button.getAttribute("data-jump-workspace");
+        if (target && allowed(WORKSPACE_CAPABILITY[target])) {
+          switchWorkspace(target);
+        }
+      });
+    }
+  );
 
   el("role").addEventListener("change", function () {
     currentRole = this.value;
@@ -469,6 +516,7 @@
   });
 
   el("ui-locale").addEventListener("change", function () {
+    persistEditorState();
     i18n.setLocale(this.value);
   });
 
@@ -481,9 +529,13 @@
     renderRoleFunction();
     applyGates();
     if (lastResult) { renderResult(lastResult, { keepTrace: true }); }
-    if (currentWorkspace === "reviewer" && allowed("review_case")) { loadReviewQueue(); }
-    if (currentWorkspace === "governance" && allowed("audit_export")) { loadGovernance(); }
-    if (currentWorkspace === "policy" && publishedConfig) {
+    restoreEditorState();
+    if (currentCheckResult) { renderContentCheck(currentCheckResult); }
+    if (currentConversationResult) { renderConversationState(currentConversationResult); }
+    if (currentWorkspace === "reviews" && allowed("review_case")) { loadReviewQueue(); }
+    if (currentWorkspace === "quality_audit" && allowed("audit_export")) { loadGovernance(); }
+    if (currentWorkspace === "rules" && allowed("architecture_review")) { loadRules(); }
+    if (currentWorkspace === "settings" && publishedConfig) {
       var pending = collectDraft();
       renderProfiles(publishedConfig.profiles);
       renderRoutes(publishedConfig.routes);
@@ -932,6 +984,562 @@
     }).join("");
   }
 
+  // ---- shared content check workspace ------------------------------------
+
+  function sha256Hex(text) {
+    var source = String(text == null ? "" : text);
+    if (!(window.crypto && window.crypto.subtle)) {
+      return Promise.resolve("");
+    }
+    return window.crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(source)
+    ).then(function (digest) {
+      return Array.prototype.map.call(
+        new Uint8Array(digest),
+        function (byte) { return byte.toString(16).padStart(2, "0"); }
+      ).join("");
+    }).catch(function () { return ""; });
+  }
+
+  function contentCheckPayload(text, clientVersion) {
+    return {
+      tenant_id: identity && identity.tenant_id ? identity.tenant_id : "TENANT-CN",
+      market: el("ctx-market").value,
+      language: el("ctx-language").value,
+      product_id: el("ctx-product").value,
+      content_type: el("content-check-type").value,
+      content: text,
+      business_fields: { channel: el("ctx-channel").value },
+      client_content_version: clientVersion || ""
+    };
+  }
+
+  function findingItems(findings) {
+    var rows = findings || [];
+    if (!rows.length) {
+      return "<li class='muted'>" + escapeHtml(t("result.noFindings")) + "</li>";
+    }
+    return rows.map(function (finding) {
+      var guidance = finding.remediation_guidance || "";
+      var terms = (finding.matched_terms || []).join(i18n.locale() === "en" ? ", " : "、");
+      return "<li class='finding-row'>" +
+        "<div class='finding-head'>" +
+        "<span class='severity-chip severity-" + escapeHtml(finding.severity || "S3") + "'>" +
+        escapeHtml(finding.severity || "S3") + "</span>" +
+        "<span class='finding-name'>" + escapeHtml(term("finding", finding.type)) + "</span>" +
+        "<span class='code-tag'>" + escapeHtml(finding.type || "") + "</span></div>" +
+        (finding.rule_id ? "<div class='finding-rule mono'>" +
+          escapeHtml(finding.rule_id) + "</div>" : "") +
+        (terms ? "<p class='finding-why'>" + escapeHtml(terms) + "</p>" : "") +
+        (guidance ? "<p class='finding-why'>" + escapeHtml(guidance) + "</p>" : "") +
+        "</li>";
+    }).join("");
+  }
+
+  function renderStructuredSpans(text, spans) {
+    var source = String(text == null ? "" : text);
+    var ranges = (spans || []).map(function (span) {
+      return {
+        start: Number(span.start),
+        end: Number(span.end),
+        severity: span.severity || ""
+      };
+    }).filter(function (span) {
+      return Number.isInteger(span.start) && Number.isInteger(span.end) &&
+        span.start >= 0 && span.end > span.start && span.end <= source.length;
+    }).sort(function (a, b) {
+      return a.start - b.start || a.end - b.end;
+    });
+
+    var cursor = 0;
+    var html = [];
+    ranges.forEach(function (span) {
+      if (span.start < cursor) { return; }
+      html.push(escapeHtml(source.slice(cursor, span.start)));
+      html.push("<mark class='span-highlight' data-severity='" +
+        escapeHtml(span.severity) + "'>" +
+        escapeHtml(source.slice(span.start, span.end)) + "</mark>");
+      cursor = span.end;
+    });
+    html.push(escapeHtml(source.slice(cursor)));
+    return html.join("");
+  }
+
+  function allFindingSpans(findings) {
+    var spans = [];
+    (findings || []).forEach(function (finding) {
+      (finding.spans || []).forEach(function (span) {
+        spans.push({
+          start: span.start,
+          end: span.end,
+          severity: finding.severity
+        });
+      });
+    });
+    return spans;
+  }
+
+  function renderContentCheck(result) {
+    var panel = el("content-check-result");
+    if (!panel || !result) { return; }
+    var editor = el("content-check-editor");
+    var sameEditor = editor && editor.value === currentCheckSnapshot;
+    if (!sameEditor) { currentContentVersion = null; }
+
+    panel.hidden = false;
+    el("content-check-decision").textContent = term("decision", result.decision);
+    el("content-check-decision").className =
+      "decision-pill decision-" + (result.decision || "");
+    el("content-check-severity").textContent = result.severity || "";
+    el("content-check-severity").className =
+      "severity-chip severity-" + (result.severity || "S3");
+    el("content-check-id").textContent = result.check_id || "—";
+    el("content-check-policy").textContent = result.policy_version || "—";
+    el("content-check-version").textContent = result.content_version || "—";
+    el("content-check-status").textContent = result.status || "—";
+    el("content-check-findings").innerHTML = findingItems(result.findings);
+
+    var spansHost = el("content-spans");
+    var recheck = el("content-recheck");
+    if (result.spans_stale || result.content_version !== currentContentVersion) {
+      spansHost.innerHTML = "<p class='guard-status warning'>" +
+        escapeHtml(t("contentCheck.stale")) + "</p>";
+      el("content-check-state").textContent = t("contentCheck.stale");
+      if (recheck) { recheck.hidden = false; }
+    } else {
+      spansHost.innerHTML = renderStructuredSpans(
+        currentCheckSnapshot,
+        allFindingSpans(result.findings)
+      );
+      if (result.safe_text && result.safe_text !== currentCheckSnapshot) {
+        spansHost.innerHTML += "<details class='safe-text-details'><summary>" +
+          escapeHtml(t("contentCheck.safeText")) + "</summary><p>" +
+          escapeHtml(result.safe_text) + "</p></details>";
+      }
+      el("content-check-state").textContent = t("contentCheck.complete", {
+        decision: term("decision", result.decision)
+      });
+      if (recheck) { recheck.hidden = true; }
+    }
+  }
+
+  function submitContentCheck(event) {
+    if (event) { event.preventDefault(); }
+    var editor = el("content-check-editor");
+    var text = editor.value || "";
+    if (!text.trim()) {
+      setFieldError("content-check-editor", "content-check-error", t("contentCheck.empty"));
+      return;
+    }
+    setFieldError("content-check-editor", "content-check-error", null);
+    var snapshot = text;
+    var loading = el("content-check-loading");
+    if (loading) { loading.hidden = false; }
+    var button = el("content-check-submit");
+    if (button) { button.disabled = true; }
+
+    sha256Hex(snapshot).then(function (version) {
+      return api("/api/checks", {
+        method: "POST",
+        body: JSON.stringify(contentCheckPayload(snapshot, version))
+      });
+    }).then(function (result) {
+      currentCheckSnapshot = snapshot;
+      currentCheckId = result.check_id || null;
+      currentContentVersion = editor.value === snapshot ? result.content_version : null;
+      currentCheckResult = result;
+      renderContentCheck(result);
+      saveEditorDrafts();
+    }).catch(function (err) {
+      setFieldError(
+        "content-check-editor",
+        "content-check-error",
+        err.message || t("contentCheck.failed")
+      );
+    }).finally(function () {
+      if (loading) { loading.hidden = true; }
+      if (button) { button.disabled = false; }
+    });
+  }
+
+  function runContentPrecheck() {
+    var editor = el("content-check-editor");
+    var text = editor && editor.value || "";
+    if (!text.trim()) { return; }
+    var snapshot = text;
+    sha256Hex(snapshot).then(function (version) {
+      return fetch("/api/checks/precheck", {
+        method: "POST",
+        headers: roleHeaders(),
+        credentials: "same-origin",
+        body: JSON.stringify(contentCheckPayload(snapshot, version))
+      });
+    }).then(function (response) {
+      return response.json().then(function (body) {
+        if (!response.ok) { return null; }
+        // A precheck is advisory. It never populates the persisted result or
+        // the version-bound highlight state.
+        return body;
+      });
+    }).catch(function () { /* advisory checks stay quiet on failure */ });
+  }
+
+  var contentCheckForm = el("content-check-form");
+  if (contentCheckForm) {
+    contentCheckForm.addEventListener("submit", submitContentCheck);
+  }
+  var contentCheckEditor = el("content-check-editor");
+  if (contentCheckEditor) {
+    contentCheckEditor.addEventListener("input", function () {
+      currentContentVersion = null;
+      if (currentCheckResult) { renderContentCheck(currentCheckResult); }
+      clearTimeout(contentPrecheckTimer);
+      contentPrecheckTimer = setTimeout(runContentPrecheck, L1_IDLE_MS);
+      clearTimeout(contentDraftTimer);
+      contentDraftTimer = setTimeout(saveEditorDrafts, 800);
+      setFieldError("content-check-editor", "content-check-error", null);
+    });
+    contentCheckEditor.addEventListener("blur", runContentPrecheck);
+  }
+  var contentRecheck = el("content-recheck");
+  if (contentRecheck) {
+    contentRecheck.addEventListener("click", function () {
+      submitContentCheck();
+    });
+  }
+
+  // ---- guarded AI conversation ------------------------------------------
+
+  function conversationStateLabel(state) {
+    var key = "conv.state." + state;
+    var label = t(key);
+    return label === key ? (state || "") : label;
+  }
+
+  function invalidateConversation() {
+    currentConversationId = null;
+    checkedConversationInput = "";
+    conversationPolicyVersion = "";
+    var button = el("conv-generate");
+    if (button) { button.hidden = true; }
+  }
+
+  function renderConversationState(result) {
+    currentConversationResult = result || null;
+    var state = result && result.state || "";
+    var decision = result && result.decision || "";
+    var stateBadge = el("conv-state-badge");
+    var stateText = el("conv-state");
+    var body = el("conversation-body");
+    if (!stateBadge || !stateText || !body) { return; }
+
+    stateText.textContent = conversationStateLabel(state);
+    stateBadge.textContent = decision ? term("decision", decision) : conversationStateLabel(state);
+    stateBadge.className = "decision-pill" +
+      (decision ? " decision-" + decision : " state-" + state);
+    body.innerHTML = "";
+    body.className = "conversation-body state-" + state;
+
+    var policy = result && (result.policy_version || conversationPolicyVersion);
+    var meta = el("conv-meta");
+    if (meta) { meta.hidden = !currentConversationId; }
+    if (el("conv-id")) { el("conv-id").textContent = currentConversationId || "—"; }
+    if (el("conv-policy")) {
+      el("conv-policy").textContent = policy || "—";
+    }
+
+    if (state === "published") {
+      // This is the only branch allowed to read a model body. Every other
+      // state renders server-authored status and findings only.
+      body.innerHTML = "<div class='conversation-bubble'>" +
+        escapeHtml(result.published_text || "") + "</div>";
+    } else if (state === "input_blocked" || state === "safe_replacement") {
+      body.innerHTML = "<p class='guard-status warning'>" +
+        escapeHtml(result.safe_message || conversationStateLabel(state)) + "</p>";
+    } else if (state === "output_withdrawn") {
+      body.innerHTML = "<p class='guard-status danger'>" +
+        escapeHtml(conversationStateLabel(state)) + "</p>";
+    } else if (state === "failed_safe") {
+      body.innerHTML = "<p class='guard-status warning'>" +
+        escapeHtml(conversationStateLabel(state)) + "</p>";
+    } else if (state === "generating") {
+      body.innerHTML = "<p class='guard-status'>" +
+        escapeHtml(conversationStateLabel(state)) + "</p>";
+    } else {
+      body.innerHTML = "<p class='guard-status'>" +
+        escapeHtml(result && result.safe_message || conversationStateLabel(state)) +
+        "</p>";
+    }
+
+    if ((result && result.findings || []).length) {
+      body.innerHTML += "<ul class='findings-list conversation-findings'>" +
+        findingItems(result.findings) + "</ul>";
+    }
+
+    var generate = el("conv-generate");
+    var editor = el("conv-editor");
+    if (generate) {
+      generate.hidden = !currentConversationId || !editor ||
+        editor.value !== checkedConversationInput || state === "generating";
+    }
+  }
+
+  function guardConversation(event) {
+    if (event) { event.preventDefault(); }
+    var editor = el("conv-editor");
+    var text = editor.value || "";
+    if (!text.trim()) {
+      setFieldError("conv-editor", "conv-error", t("conversationGuard.empty"));
+      return;
+    }
+    setFieldError("conv-editor", "conv-error", null);
+    invalidateConversation();
+    currentConversationResult = null;
+    renderConversationState({ state: "generating" });
+    var loading = el("conv-loading");
+    if (loading) { loading.hidden = false; }
+    var button = el("conv-guard-submit");
+    if (button) { button.disabled = true; }
+
+    sha256Hex(text).then(function (version) {
+      return api("/api/conversations/guard-input", {
+        method: "POST",
+        body: JSON.stringify({
+          tenant_id: identity && identity.tenant_id ? identity.tenant_id : "TENANT-CN",
+          content: text,
+          language: el("ctx-language").value,
+          market: el("ctx-market").value,
+          product_id: el("ctx-product").value,
+          content_type: "ai_conversation",
+          client_content_version: version || ""
+        })
+      });
+    }).then(function (result) {
+      currentConversationId = result.conversation_id || null;
+      conversationPolicyVersion = result.policy_version || "";
+      checkedConversationInput = currentConversationId ? text : "";
+      var state = currentConversationId ? "guarded" : "input_blocked";
+      renderConversationState(Object.assign({}, result, { state: state }));
+      saveEditorDrafts();
+    }).catch(function (err) {
+      invalidateConversation();
+      currentConversationResult = null;
+      renderConversationState({ state: "failed_safe" });
+      setFieldError("conv-editor", "conv-error", err.message);
+    }).finally(function () {
+      if (loading) { loading.hidden = true; }
+      if (button) { button.disabled = false; }
+    });
+  }
+
+  function generateConversation() {
+    var editor = el("conv-editor");
+    if (!currentConversationId || !editor ||
+        editor.value !== checkedConversationInput) {
+      invalidateConversation();
+      setFieldError(
+        "conv-editor",
+        "conv-error",
+        t("conversationGuard.recheckRequired")
+      );
+      return;
+    }
+    setFieldError("conv-editor", "conv-error", null);
+    renderConversationState({ state: "generating" });
+    var loading = el("conv-loading");
+    if (loading) { loading.hidden = false; }
+    var button = el("conv-generate");
+    if (button) { button.disabled = true; }
+    var conversationId = currentConversationId;
+    var checkedInput = checkedConversationInput;
+
+    fetch(
+      "/api/conversations/" + encodeURIComponent(conversationId) + "/generate",
+      {
+        method: "POST",
+        headers: roleHeaders(),
+        credentials: "same-origin",
+        body: JSON.stringify({
+          tenant_id: identity && identity.tenant_id ? identity.tenant_id : "TENANT-CN",
+          content: checkedInput,
+          rule_version: conversationPolicyVersion
+        })
+      }
+    ).then(function (resp) {
+      return resp.json().then(function (body) {
+        if (body.state === "failed_safe") {
+          renderConversationState(body);
+          return;
+        }
+        if (!resp.ok) {
+          throw new Error(
+            (body.error && body.error.message) || ("HTTP " + resp.status)
+          );
+        }
+        if (editor.value !== checkedInput) {
+          invalidateConversation();
+          renderConversationState({ state: "requires_recheck" });
+          return;
+        }
+        renderConversationState(body);
+      });
+    }).catch(function (err) {
+      invalidateConversation();
+      renderConversationState({ state: "failed_safe" });
+      setFieldError("conv-editor", "conv-error", err.message);
+    }).finally(function () {
+      if (loading) { loading.hidden = true; }
+      if (button) { button.disabled = false; }
+    });
+  }
+
+  var conversationForm = el("conversation-form");
+  if (conversationForm) {
+    conversationForm.addEventListener("submit", guardConversation);
+  }
+  var conversationGuard = el("conv-guard-submit");
+  if (conversationGuard) {
+    conversationGuard.addEventListener("click", guardConversation);
+  }
+  var conversationGenerate = el("conv-generate");
+  if (conversationGenerate) {
+    conversationGenerate.addEventListener("click", generateConversation);
+  }
+  var conversationEditor = el("conv-editor");
+  if (conversationEditor) {
+    conversationEditor.addEventListener("input", function () {
+      invalidateConversation();
+      currentConversationResult = null;
+      renderConversationState({ state: "requires_recheck" });
+      clearTimeout(conversationDraftTimer);
+      conversationDraftTimer = setTimeout(saveEditorDrafts, 800);
+      setFieldError("conv-editor", "conv-error", null);
+    });
+  }
+
+  // ---- rule workbench ----------------------------------------------------
+
+  function loadRules() {
+    var error = el("rules-error");
+    if (error) { error.hidden = true; }
+    return api("/api/rules").then(function (body) {
+      if (el("rules-current-version")) {
+        el("rules-current-version").textContent = body.current_version || "—";
+      }
+      var tbody = el("rules-table") &&
+        el("rules-table").querySelector("tbody");
+      if (tbody) {
+        tbody.innerHTML = (body.rules || []).map(function (rule) {
+          var patterns = rule.patterns || [];
+          return "<tr>" +
+            "<td class='mono'>" + escapeHtml(rule.rule_id || "") + "</td>" +
+            "<td>" + escapeHtml(term("finding", rule.type)) +
+            "<span class='code-tag'>" + escapeHtml(rule.type || "") + "</span></td>" +
+            "<td><span class='severity-chip severity-" +
+            escapeHtml(rule.severity || "S3") + "'>" +
+            escapeHtml(rule.severity || "") + "</span></td>" +
+            "<td>" + escapeHtml(term("decision", rule.decision)) +
+            "<span class='code-tag'>" + escapeHtml(rule.decision || "") + "</span></td>" +
+            "<td class='mono'>" + patterns.map(function (pattern) {
+              return "<span class='rule-pattern'>" + escapeHtml(pattern) + "</span>";
+            }).join("") + "</td></tr>";
+        }).join("");
+      }
+      var history = el("rules-history");
+      if (history) {
+        history.innerHTML = (body.history || []).map(function (item) {
+          return "<li><span class='mono'>" + escapeHtml(item.version || "") + "</span>" +
+            "<span class='code-tag'>" + escapeHtml(item.status || "") + "</span>" +
+            "<span class='muted small'>" + escapeHtml(
+              item.published_at || item.created_at || ""
+            ) + " · " + escapeHtml(String(item.rule_count || 0)) + "</span></li>";
+        }).join("");
+      }
+    }).catch(function (err) {
+      if (error) {
+        error.textContent = err.message;
+        error.hidden = false;
+      }
+    });
+  }
+
+  var rulesRefresh = el("rules-refresh");
+  if (rulesRefresh) {
+    rulesRefresh.addEventListener("click", loadRules);
+  }
+
+  // ---- locale-safe editor state and local drafts ------------------------
+
+  function persistEditorState() {
+    preservedEditorState = {
+      content: el("content") ? el("content").value : "",
+      content_check: el("content-check-editor") ? el("content-check-editor").value : "",
+      conversation: el("conv-editor") ? el("conv-editor").value : "",
+      currentCheckId: currentCheckId,
+      currentCheckSnapshot: currentCheckSnapshot,
+      currentContentVersion: currentContentVersion,
+      currentCheckResult: currentCheckResult,
+      currentConversationId: currentConversationId,
+      checkedConversationInput: checkedConversationInput,
+      conversationPolicyVersion: conversationPolicyVersion,
+      currentConversationResult: currentConversationResult
+    };
+  }
+
+  function restoreEditorState() {
+    if (!preservedEditorState) { return; }
+    var pairs = [
+      ["content", preservedEditorState.content],
+      ["content-check-editor", preservedEditorState.content_check],
+      ["conv-editor", preservedEditorState.conversation]
+    ];
+    pairs.forEach(function (pair) {
+      var field = el(pair[0]);
+      if (field && !field.value && pair[1]) { field.value = pair[1]; }
+    });
+    currentCheckId = preservedEditorState.currentCheckId;
+    currentCheckSnapshot = preservedEditorState.currentCheckSnapshot;
+    currentContentVersion = preservedEditorState.currentContentVersion;
+    currentCheckResult = preservedEditorState.currentCheckResult;
+    currentConversationId = preservedEditorState.currentConversationId;
+    checkedConversationInput = preservedEditorState.checkedConversationInput;
+    conversationPolicyVersion = preservedEditorState.conversationPolicyVersion;
+    currentConversationResult = preservedEditorState.currentConversationResult;
+  }
+
+  function editorDraftKey(kind) {
+    return draftKey() + "." + kind;
+  }
+
+  function saveEditorDrafts() {
+    var drafts = {
+      content_check: el("content-check-editor") ? el("content-check-editor").value : "",
+      conversation: el("conv-editor") ? el("conv-editor").value : "",
+      saved_at: Date.now()
+    };
+    try {
+      window.localStorage.setItem(editorDraftKey("workspaces"), JSON.stringify(drafts));
+    } catch (err) { /* private mode / quota: drafts are best-effort */ }
+  }
+
+  function restoreEditorDrafts() {
+    var raw = null;
+    try {
+      raw = window.localStorage.getItem(editorDraftKey("workspaces"));
+    } catch (err) { raw = null; }
+    if (!raw) { return; }
+    var parsed = null;
+    try { parsed = JSON.parse(raw); } catch (err) { parsed = null; }
+    if (!parsed || Date.now() - (parsed.saved_at || 0) > DRAFT_TTL_MS) { return; }
+    if (el("content-check-editor") && !el("content-check-editor").value) {
+      el("content-check-editor").value = parsed.content_check || "";
+    }
+    if (el("conv-editor") && !el("conv-editor").value) {
+      el("conv-editor").value = parsed.conversation || "";
+    }
+  }
+
   // ---- usability telemetry ----------------------------------------------
 
   /* Abandonment: a warning appeared, the editor was emptied, nothing submitted.
@@ -1067,9 +1675,15 @@
     // Cmd/Ctrl+Enter submits from inside the textarea, where Enter itself has
     // to keep meaning "new line".
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-      if (currentWorkspace === "representative") {
+      if (currentWorkspace === "overview") {
         event.preventDefault();
         submitCase();
+      } else if (currentWorkspace === "content_check") {
+        event.preventDefault();
+        submitContentCheck();
+      } else if (currentWorkspace === "conversation_guard") {
+        event.preventDefault();
+        guardConversation();
       }
       return;
     }
@@ -2043,8 +2657,9 @@
       "<label><span class='fld-label'>" + escapeHtml(t("rev.reason")) + "</span>" +
       "<textarea id='decision-reason' rows='3' required placeholder='" +
       escapeHtml(t("rev.reasonPlaceholder")) + "'></textarea></label>" +
+      "<div class='review-actions'>" +
       "<button type='submit' class='btn btn-primary'>" +
-      escapeHtml(t("rev.submitDecision")) + "</button></form>";
+      escapeHtml(t("rev.submitDecision")) + "</button></div></form>";
   }
 
   // ---- model policy workspace --------------------------------------------
@@ -2602,7 +3217,7 @@
         api("/api/notifications/" + encodeURIComponent(item.notification_id) + "/read", {
           method: "POST"
         }).then(loadNotifications).catch(function () { /* non-fatal */ });
-        switchWorkspace("records");
+        switchWorkspace("overview");
         el("notif-panel").hidden = true;
         el("notif-button").setAttribute("aria-expanded", "false");
       });
@@ -2672,7 +3287,7 @@
         button.onclick = function () {
           var caseId = button.getAttribute("data-open-case");
           api("/api/cases/" + encodeURIComponent(caseId)).then(function (detail) {
-            switchWorkspace("representative");
+            switchWorkspace("overview");
             renderResult(detail);
           }).catch(function (err) { toast(err.message, true); });
         };
@@ -2787,11 +3402,18 @@
   // Identity first: what the rest of the interface may load depends on it.
   loadGlossary().then(runLocalHints);
   loadIdentity().then(function () {
-    loadPermissions();
+    var permissionsReady = loadPermissions();
     loadSources();
     loadProducts();
     loadNotifications();
     offerDraft();
     maybeShowOnboarding();
+    return permissionsReady;
+  }).then(function () {
+    restoreEditorDrafts();
+    restoreEditorState();
+    if (currentWorkspace === "overview" && allowed("view_case_summary")) {
+      loadRecords({ reset: true });
+    }
   });
 })();

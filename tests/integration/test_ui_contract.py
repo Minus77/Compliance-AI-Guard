@@ -1,14 +1,39 @@
 """Embedded UI contract: served pages, assets, and workspace entry points."""
 
 import re
+from pathlib import Path
 
 
-def test_ui_serves_three_workspaces(client):
+def test_ui_serves_seven_workspaces(client):
     response = client.get("/")
     assert response.status_code == 200
     html = response.text
-    for marker in ("workspace-representative", "workspace-reviewer", "workspace-policy"):
+    for marker in (
+        "workspace-overview",
+        "workspace-content_check",
+        "workspace-conversation_guard",
+        "workspace-reviews",
+        "workspace-rules",
+        "workspace-quality_audit",
+        "workspace-settings",
+    ):
         assert marker in html
+
+
+def test_ui_exposes_both_check_entries_and_seven_workspaces():
+    html = Path("src/compliance_guard/web/index.html").read_text(encoding="utf-8")
+    for workspace in (
+        "overview",
+        "content_check",
+        "conversation_guard",
+        "reviews",
+        "rules",
+        "quality_audit",
+        "settings",
+    ):
+        assert f'data-workspace="{workspace}"' in html
+    assert 'id="content-check"' in html
+    assert 'id="conversation-guard"' in html
 
 
 def test_ui_assets_served(client):
@@ -22,9 +47,25 @@ def test_ui_contract_exposes_workspace_entry_points(client):
     # Anchor on the stable markup contract, not on rendered label text: the nav
     # labels are localized (zh-CN by default) and carry data-i18n keys, so
     # asserting English strings would only be testing the default locale.
-    for workspace in ("representative", "reviewer", "policy"):
+    for workspace in (
+        "overview",
+        "content_check",
+        "conversation_guard",
+        "reviews",
+        "rules",
+        "quality_audit",
+        "settings",
+    ):
         assert f'data-workspace="{workspace}"' in html
-    for key in ("nav.representative", "nav.reviewer", "nav.policy"):
+    for key in (
+        "nav.overview",
+        "nav.content_check",
+        "nav.conversation_guard",
+        "nav.reviews",
+        "nav.rules",
+        "nav.quality_audit",
+        "nav.settings",
+    ):
         assert f'data-i18n="{key}"' in html
     assert "x-demo-role" in html
 
@@ -32,14 +73,60 @@ def test_ui_contract_exposes_workspace_entry_points(client):
 def test_ui_contract_references_api_endpoints(client):
     js = client.get("/assets/app.js").text
     for endpoint in (
+        "/api/checks",
+        "/api/checks/precheck",
         "/api/cases/check",
         "/api/reviews",
         "/api/config/models",
         "/api/config/publish",
         "/api/config/rollback",
+        "/api/conversations/guard-input",
         "/api/metrics",
     ):
         assert endpoint in js
+
+
+def test_ui_renders_structured_spans_only_for_the_current_content_version(client):
+    js = client.get("/assets/app.js").text
+    assert "content_version" in js
+    assert "spans_stale" in js
+    assert "currentContentVersion" in js
+    assert "renderStructuredSpans" in js
+    assert 'if (result.spans_stale || result.content_version !== currentContentVersion)' in js
+    assert 'id="content-recheck"' in client.get("/").text
+
+
+def test_ui_never_renders_a_blocked_or_withdrawn_ai_body(client):
+    js = client.get("/assets/app.js").text
+    assert 'state === "input_blocked"' in js
+    assert 'state === "generating"' in js
+    assert 'state === "output_withdrawn"' in js
+    assert 'state === "safe_replacement"' in js
+    assert 'state === "failed_safe"' in js
+    assert "published_text" in js
+    assert "conversation-body" in client.get("/").text
+
+
+def test_language_switch_preserves_editor_and_check_identity(client):
+    js = client.get("/assets/app.js").text
+    assert "persistEditorState" in js
+    assert "draftKey()" in js
+    assert "currentCheckId" in js
+    i18n = client.get("/assets/i18n.js").text
+    assert '"conv.state.input_blocked"' in i18n
+    assert '"conv.state.generating"' in i18n
+    assert '"conv.state.output_withdrawn"' in i18n
+    assert '"conv.state.safe_replacement"' in i18n
+    assert '"nav.shortcutHint": "按 1–7' in i18n
+    assert '"nav.shortcutHint": "Press 1-7' in i18n
+
+
+def test_mobile_layout_keeps_review_actions_reachable(client):
+    css = client.get("/assets/styles.css").text
+    mobile = css.split("@media (max-width: 900px)", 1)[1]
+    assert ".review-layout" in mobile
+    assert ".review-detail-pane" in mobile
+    assert ".review-decision" in mobile or ".review-actions" in mobile
 
 
 def test_ui_contract_has_semantic_form_elements(client):
@@ -167,7 +254,7 @@ def test_locale_tables_cover_icsr_and_signature_terms(client):
 
 def test_ui_exposes_governance_workspace(client):
     html = client.get("/").text
-    assert 'data-workspace="governance"' in html
+    assert 'data-workspace="quality_audit"' in html
     for marker in ('id="gov-integrity"', 'id="connector-table"', 'id="audit-table"'):
         assert marker in html
     js = client.get("/assets/app.js").text
@@ -177,7 +264,7 @@ def test_ui_exposes_governance_workspace(client):
 
 def test_governance_workspace_is_gated_on_audit_export(client):
     js = client.get("/assets/app.js").text
-    assert "governance: \"audit_export\"" in js
+    assert "quality_audit: \"audit_export\"" in js
 
 
 def test_ui_offers_exactly_the_four_demo_roles(client):
