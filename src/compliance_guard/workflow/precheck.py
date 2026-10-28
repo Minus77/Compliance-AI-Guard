@@ -31,14 +31,20 @@ editing can clear, training the reader to ignore the panel entirely.
 
 from __future__ import annotations
 
+import hashlib
 import time
 from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import Field
 
-from compliance_guard.domain.enums import Decision
-from compliance_guard.domain.models import CaseContext, DomainModel, ExtractedData
+from compliance_guard.domain.enums import Decision, Entrypoint
+from compliance_guard.domain.models import (
+    CaseContext,
+    CharacterSpan,
+    DomainModel,
+    ExtractedData,
+)
 from compliance_guard.knowledge.evidence_pack import EvidencePack
 from compliance_guard.knowledge.field_resolver import FieldResolver
 from compliance_guard.knowledge.glossary import DEFAULT_LOCALE, Glossary, default_glossary
@@ -80,7 +86,14 @@ class PrecheckFinding(DomainModel):
     decision: str
     rule_id: str | None = None
     matched_terms: list[str] = Field(default_factory=list)
-    spans: list[str] = Field(default_factory=list)
+    spans: list[CharacterSpan] = Field(default_factory=list)
+    rule_version: str = ""
+    category: str = ""
+    allow_save: bool = True
+    allow_generate: bool = True
+    allow_publish: bool = True
+    notification_message: str = ""
+    remediation_guidance: str = ""
     # The three-sentence card. Plain language is the point, so these are filled
     # from the glossary rather than from an internal reason string.
     title: str = ""
@@ -107,6 +120,8 @@ class PrecheckResult(DomainModel):
     claimed_fields: dict[str, Any] = Field(default_factory=dict)
     discrepancies: list[str] = Field(default_factory=list)
     policy_version: str = ""
+    content_version: str = ""
+    spans_stale: bool = False
     glossary_version: str = ""
     elapsed_ms: float = 0.0
     within_budget: bool = True
@@ -141,6 +156,10 @@ class PrecheckService:
         known_identifiers: list[Any] | None = None,
         as_of: datetime | None = None,
         locale: str = DEFAULT_LOCALE,
+        content_type: str = "customer_interaction_note",
+        content_subtype: str = "",
+        therapeutic_area: str = "",
+        client_content_version: str = "",
     ) -> PrecheckResult:
         started = time.perf_counter()
         text = content or ""
@@ -215,6 +234,9 @@ class PrecheckService:
                 language=language,
                 product_id=product_id,
                 channel="precheck",
+                content_type=content_type,
+                content_version=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                therapeutic_area=therapeutic_area or None,
                 source="precheck",
                 source_version="draft",
                 policy_version=bundle.policy_version,
@@ -223,6 +245,8 @@ class PrecheckService:
             list(sanitized.findings) + scan_untrusted_content(text),
             pack,
             entity_resolution=sanitized.resolution,
+            entrypoint=Entrypoint.CONTENT,
+            offset_map=sanitized.offset_map,
         )
 
         findings = [
@@ -247,6 +271,11 @@ class PrecheckService:
             claimed_fields=dict(resolution.claimed_fields),
             discrepancies=list(resolution.discrepancies),
             policy_version=bundle.policy_version,
+            content_version=policy_result.content_version,
+            spans_stale=bool(
+                client_content_version
+                and client_content_version != policy_result.content_version
+            ),
             glossary_version=self._glossary.version,
             elapsed_ms=round(elapsed_ms, 3),
             within_budget=elapsed_ms < L1_BUDGET_MS,
@@ -274,6 +303,14 @@ class PrecheckService:
             decision=finding.decision.value,
             rule_id=finding.rule_id,
             matched_terms=list(finding.matched_terms),
+            spans=list(finding.spans),
+            rule_version=finding.rule_version,
+            category=finding.category,
+            allow_save=finding.allow_save,
+            allow_generate=finding.allow_generate,
+            allow_publish=finding.allow_publish,
+            notification_message=finding.notification_message,
+            remediation_guidance=finding.remediation_guidance,
             title=card.title,
             why=card.why,
             what_to_do=card.what_to_do,

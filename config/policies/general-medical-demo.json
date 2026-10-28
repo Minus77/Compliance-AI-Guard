@@ -63,7 +63,8 @@
         ]
       },
       "remediation_guidance": "route to pharmacovigilance intake and medical review",
-      "test_cases": []
+      "test_cases": [],
+      "requires_span": true
     },
     "CN-002": {
       "type": "serious_adverse_event",
@@ -119,7 +120,8 @@
         ]
       },
       "remediation_guidance": "immediate pharmacovigilance intake and medical review",
-      "test_cases": []
+      "test_cases": [],
+      "requires_span": true
     },
     "CN-003": {
       "type": "bribery_or_inducement",
@@ -175,7 +177,8 @@
         ]
       },
       "remediation_guidance": "compliance and legal review; message blocked",
-      "test_cases": []
+      "test_cases": [],
+      "requires_span": true
     },
     "CN-004": {
       "type": "comparative_claim",
@@ -232,7 +235,8 @@
         ]
       },
       "remediation_guidance": "require comparison context evidence before release",
-      "test_cases": []
+      "test_cases": [],
+      "requires_span": true
     },
     "CN-005": {
       "type": "prompt_injection",
@@ -286,11 +290,13 @@
         ],
         "entrypoints": [
           "input",
-          "output"
+          "output",
+          "content"
         ]
       },
       "remediation_guidance": "block message and escalate to security",
-      "test_cases": []
+      "test_cases": [],
+      "requires_span": true
     },
     "CN-006": {
       "type": "pii",
@@ -338,11 +344,13 @@
         ],
         "entrypoints": [
           "input",
-          "output"
+          "output",
+          "content"
         ]
       },
       "remediation_guidance": "route to privacy review and redaction check",
-      "test_cases": []
+      "test_cases": [],
+      "requires_span": true
     },
     "CN-007": {
       "type": "phi",
@@ -390,11 +398,13 @@
         ],
         "entrypoints": [
           "input",
-          "output"
+          "output",
+          "content"
         ]
       },
       "remediation_guidance": "route to privacy review and redaction check",
-      "test_cases": []
+      "test_cases": [],
+      "requires_span": true
     },
     "CN-008": {
       "type": "severe_pii_leak",
@@ -440,11 +450,13 @@
         ],
         "entrypoints": [
           "input",
-          "output"
+          "output",
+          "content"
         ]
       },
       "remediation_guidance": "block and escalate as data breach",
-      "test_cases": []
+      "test_cases": [],
+      "requires_span": true
     },
     "CN-009": {
       "type": "off_label",
@@ -799,7 +811,8 @@
         ],
         "entrypoints": [
           "input",
-          "output"
+          "output",
+          "content"
         ]
       },
       "remediation_guidance": "security review",

@@ -68,6 +68,7 @@ class PolicyRule(DomainModel):
     suppression_policy: str = "none"
     evidence_requirements: list[str] = Field(default_factory=list)
     test_cases: list[RuleTestCase] = Field(default_factory=list)
+    requires_span: bool = False
     requires_evidence: bool = True
     evidence_gap_acceptable: bool = False
     reversible: bool = True

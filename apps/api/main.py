@@ -528,6 +528,10 @@ class PrecheckPayload(BaseModel):
     language: str = "zh-CN"
     product_id: str = ""
     source: str = "call_report"
+    content_type: str = "customer_interaction_note"
+    content_subtype: str = ""
+    therapeutic_area: str = ""
+    client_content_version: str = ""
     structured_fields: dict[str, Any] = Field(default_factory=dict)
     locale: str = DEFAULT_LOCALE
 
@@ -841,6 +845,10 @@ def create_app(services: Any | None = None) -> FastAPI:
             product_id=payload.product_id,
             claimed_fields=payload.structured_fields,
             locale=payload.locale,
+            content_type=payload.content_type,
+            content_subtype=payload.content_subtype,
+            therapeutic_area=payload.therapeutic_area,
+            client_content_version=payload.client_content_version,
         )
         return result.model_dump(mode="json")
 

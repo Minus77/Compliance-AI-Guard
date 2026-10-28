@@ -20,6 +20,7 @@ from pydantic_core import InitErrorDetails, PydanticCustomError
 from .enums import (
     AdapterType,
     CaseState,
+    ContentType,
     ContentPartType,
     CostTier,
     DataClass,
@@ -32,6 +33,7 @@ from .enums import (
     ReviewTaskStatus,
     SpanStatus,
     TaskType,
+    normalize_content_type,
 )
 
 
@@ -568,8 +570,18 @@ class CaseContext(DomainModel):
     actor: Actor | None = None
     source: str | None = None
     source_version: str | None = None
+    content_type: ContentType | None = None
+    content_version: str = ""
+    therapeutic_area: str | None = None
     policy_version: str | None = None
     knowledge_snapshot_id: str | None = None
+
+    @field_validator("content_type", mode="before")
+    @classmethod
+    def _normalize_content_type(cls, value: Any) -> Any:
+        if value is None or isinstance(value, ContentType):
+            return value
+        return normalize_content_type(str(value))
 
 
 class ExtractedData(DomainModel):

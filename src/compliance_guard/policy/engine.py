@@ -17,13 +17,16 @@ from pydantic import Field
 
 from compliance_guard.domain.enums import (
     Decision,
+    Entrypoint,
     EvidenceStatus,
     Role,
     SecurityAction,
     Severity,
+    normalize_content_type,
 )
 from compliance_guard.domain.models import (
     CaseContext,
+    CharacterSpan,
     DomainModel,
     Evidence,
     ExtractedData,
@@ -37,6 +40,7 @@ from compliance_guard.knowledge.label_facts import LabelFacts, compare_label_fie
 from .bundles import PolicyRule, parse_bundle_rules
 from .routing import RaciMatrix, ReviewPlan, default_raci, route_review
 from .severity import calculate_severity
+from .spans import TextOffsetMap, find_spans
 
 _COMPARED_FIELDS = ("indication", "indication_id", "population", "line", "dose", "route", "duration", "combination")
 
@@ -107,6 +111,14 @@ class PolicyFinding(Finding):
     required_roles: list[Role] = Field(default_factory=list)
     sla_label: str | None = None
     irreversible: bool = False
+    spans: list[CharacterSpan] = Field(default_factory=list)
+    rule_version: str = ""
+    category: str = ""
+    allow_save: bool = True
+    allow_generate: bool = True
+    allow_publish: bool = True
+    notification_message: str = ""
+    remediation_guidance: str = ""
 
 
 class PolicyResult(DomainModel):
@@ -120,6 +132,7 @@ class PolicyResult(DomainModel):
     rule_ids: list[str] = Field(default_factory=list)
     case_id: str = ""
     trace_id: str = ""
+    content_version: str = ""
 
 
 class PolicyEngine:
@@ -163,6 +176,7 @@ class PolicyEngine:
         evidence_pack: EvidencePack,
         matched: list[str],
         override_decision: Decision | None = None,
+        spans: list[CharacterSpan] | None = None,
     ) -> PolicyFinding:
         reason = f"rule {rule.rule_id} ({rule.type}) matched patterns {matched}" if matched else rule.next_action
         finding = PolicyFinding(
@@ -177,6 +191,14 @@ class PolicyEngine:
             next_action=rule.next_action,
             irreversible=not rule.reversible,
             matched_terms=list(matched),
+            spans=list(spans or []),
+            rule_version=rule.version,
+            category=rule.category,
+            allow_save=rule.allow_save,
+            allow_generate=rule.allow_generate,
+            allow_publish=rule.allow_publish,
+            notification_message=rule.notification_message,
+            remediation_guidance=rule.remediation_guidance,
         )
         if rule.requires_evidence and not rule.evidence_gap_acceptable:
             if evidence_pack.supporting:
@@ -274,6 +296,10 @@ class PolicyEngine:
             if item not in existing.missing_information:
                 existing.missing_information.append(item)
 
+        for span in incoming.spans:
+            if span not in existing.spans:
+                existing.spans.append(span)
+
         if incoming.confidence is not None:
             existing.confidence = (
                 incoming.confidence
@@ -323,6 +349,112 @@ class PolicyEngine:
     def _has_label_fields(fields: dict[str, Any]) -> bool:
         return any(field in fields for field in _COMPARED_FIELDS)
 
+    @staticmethod
+    def _scope_matches(
+        rule: PolicyRule,
+        context: CaseContext,
+        entrypoint: Entrypoint,
+    ) -> bool:
+        scope = rule.scope
+        content_type = context.content_type or normalize_content_type(context.channel)
+
+        def matches(value: str | None, allowed: list[str]) -> bool:
+            return not allowed or (value is not None and value.casefold() in {item.casefold() for item in allowed})
+
+        return (
+            matches(context.tenant_id, scope.tenant_ids)
+            and matches(context.market, scope.markets)
+            and matches(context.language, scope.languages)
+            and matches(context.product_id, scope.product_ids)
+            and matches(context.therapeutic_area, scope.therapeutic_areas)
+            and (
+                not scope.content_types
+                or (content_type is not None and content_type in scope.content_types)
+            )
+            and (not scope.entrypoints or entrypoint in scope.entrypoints)
+        )
+
+    def _scan_content(
+        self,
+        text: str,
+        *,
+        context: CaseContext,
+        entrypoint: Entrypoint,
+        evidence_pack: EvidencePack,
+        offset_map: TextOffsetMap | None,
+    ) -> tuple[dict[str, PolicyFinding], list[str]]:
+        findings: dict[str, PolicyFinding] = {}
+        reasons: list[str] = []
+        for rule in self._rules:
+            if not rule.patterns or not self._scope_matches(rule, context, entrypoint):
+                continue
+            safe_spans = find_spans(text, rule.patterns)
+            if not safe_spans:
+                continue
+            original_spans: list[CharacterSpan] = []
+            for span in safe_spans:
+                mapped = (
+                    offset_map.to_original(span.start, span.end)
+                    if offset_map is not None
+                    else span
+                )
+                if mapped is not None and mapped not in original_spans:
+                    original_spans.append(mapped)
+            matched = list(dict.fromkeys(text[span.start : span.end] for span in safe_spans))
+            finding = self._new_finding(
+                rule,
+                evidence_pack,
+                matched,
+                spans=original_spans,
+            )
+            if rule.requires_span and not original_spans:
+                finding.decision = Decision.HUMAN_REVIEW
+            findings[rule.rule_id] = finding
+            reasons.append(f"rule {rule.rule_id} ({rule.type}) matched pattern {matched[0]!r}")
+        return findings, reasons
+
+    def evaluate_text(
+        self,
+        text: str,
+        *,
+        context: CaseContext,
+        entrypoint: Entrypoint,
+        offset_map: TextOffsetMap | None = None,
+    ) -> PolicyResult:
+        """Evaluate scoped patterns against one text version with real spans."""
+        if not context.case_id or not context.trace_id:
+            raise ValueError("context must carry non-empty case_id and trace_id for auditability")
+        pack = EvidencePack(
+            snapshot_id="text-only",
+            query=text,
+            evidence_gap=False,
+        )
+        findings, reasons = self._scan_content(
+            text,
+            context=context,
+            entrypoint=entrypoint,
+            evidence_pack=pack,
+            offset_map=offset_map,
+        )
+        finding_list = list(findings.values())
+        aggregated = calculate_severity(finding_list)
+        content_version = context.content_version or _content_version(text)
+        result = PolicyResult(
+            decision=self._aggregate_decision(finding_list, pack),
+            severity=aggregated.severity,
+            findings=finding_list,
+            policy_version=self._bundle.policy_version,
+            reasons=reasons,
+            routing=None,
+            evidence_gap=False,
+            rule_ids=[finding.rule_id for finding in finding_list],
+            case_id=context.case_id,
+            trace_id=context.trace_id,
+            content_version=content_version,
+        )
+        result.routing = route_review(result, self._raci, self._route_version)
+        return result
+
     def evaluate(
         self,
         context: CaseContext,
@@ -330,23 +462,21 @@ class PolicyEngine:
         security_findings: list[SecurityFinding],
         evidence_pack: EvidencePack,
         entity_resolution: dict[str, Any] | None = None,
+        entrypoint: Entrypoint = Entrypoint.CONTENT,
+        offset_map: TextOffsetMap | None = None,
     ) -> PolicyResult:
         """Evaluate the bundle and produce the server-controlled result."""
         if not context.case_id or not context.trace_id:
             raise ValueError("context must carry non-empty case_id and trace_id for auditability")
 
-        content = self._content_text(extracted, evidence_pack)
-        findings: dict[str, PolicyFinding] = {}
-        reasons: list[str] = []
-
-        for rule in self._rules:
-            if not rule.patterns:
-                continue
-            matched = [pattern for pattern in rule.patterns if re.search(re.escape(pattern), content, re.IGNORECASE)]
-            if matched:
-                finding = self._new_finding(rule, evidence_pack, matched)
-                findings[rule.rule_id] = finding
-                reasons.append(f"rule {rule.rule_id} ({rule.type}) matched pattern {matched[0]!r}")
+        content = evidence_pack.query
+        findings, reasons = self._scan_content(
+            content,
+            context=context,
+            entrypoint=entrypoint,
+            evidence_pack=evidence_pack,
+            offset_map=offset_map,
+        )
 
         for candidate in extracted.findings:
             rule = self._rule_for_type(candidate.type)
@@ -519,6 +649,7 @@ class PolicyEngine:
             rule_ids=[finding.rule_id for finding in finding_list],
             case_id=context.case_id,
             trace_id=context.trace_id,
+            content_version=context.content_version or _content_version(content),
         )
         result.routing = route_review(result, self._raci, self._route_version)
         return result
@@ -535,6 +666,12 @@ class PolicyEngine:
             elif any(finding.severity in _HIGH_RISK for finding in findings):
                 top = Decision.HUMAN_REVIEW
         return top
+
+
+def _content_version(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 __all__ = ["PolicyEngine", "PolicyFinding", "PolicyResult"]

@@ -4,18 +4,32 @@ from datetime import UTC, datetime
 
 import pytest
 
-from compliance_guard.domain.enums import Decision, Role, SecurityAction, Severity
+from compliance_guard.domain.enums import (
+    ContentType,
+    Decision,
+    Entrypoint,
+    Role,
+    SecurityAction,
+    Severity,
+)
 from compliance_guard.domain.models import (
     CandidateFinding,
     CaseContext,
+    CharacterSpan,
     Entity,
     Evidence,
     ExtractedData,
+    PolicyBundle,
     SecurityFinding,
 )
 from compliance_guard.knowledge.evidence_pack import EvidenceGap, EvidencePack
 from compliance_guard.knowledge.label_facts import LabelFacts
-from compliance_guard.policy.bundles import PolicyBundleStore, parse_bundle_rules
+from compliance_guard.policy.bundles import (
+    PolicyBundleStore,
+    PolicyRule,
+    RuleScope,
+    parse_bundle_rules,
+)
 from compliance_guard.policy.engine import PolicyEngine
 from compliance_guard.policy.severity import SeverityResult, calculate_severity
 
@@ -229,6 +243,68 @@ def test_permission_denial_blocks(policy):
     assert any(finding.type == "permission_failure" for finding in result.findings)
     assert result.decision == "blocked"
     assert Role.SECURITY in result.routing.required_roles
+
+
+def _scoped_engine(entrypoint: Entrypoint, pattern: str) -> PolicyEngine:
+    bundle = PolicyBundle(
+        policy_version="scoped-v1",
+        market="CN",
+        rules={
+            "GEN-010": PolicyRule(
+                rule_id="GEN-010",
+                version="1",
+                title="Risk wording",
+                type="risk_wording",
+                severity=Severity.S1,
+                decision=Decision.HUMAN_REVIEW,
+                scope=RuleScope(
+                    content_types=[ContentType.PROMOTIONAL_CONTENT],
+                    entrypoints=[entrypoint],
+                ),
+                patterns=[pattern],
+                allow_save=True,
+                requires_span=True,
+            )
+        },
+    )
+    return PolicyEngine(bundle)
+
+
+def _scoped_context() -> CaseContext:
+    return CaseContext(
+        case_id="case-scoped",
+        trace_id="trace-scoped",
+        tenant_id="TENANT-A",
+        market="CN",
+        language="zh-CN",
+        product_id="PRODUCT-A",
+        channel="promotional_content",
+        content_type=ContentType.PROMOTIONAL_CONTENT,
+    )
+
+
+def test_content_rules_are_scoped_and_located_in_the_original_text():
+    result = _scoped_engine(Entrypoint.CONTENT, "风险").evaluate_text(
+        "风险风险",
+        context=_scoped_context(),
+        entrypoint=Entrypoint.CONTENT,
+    )
+    finding = next(item for item in result.findings if item.rule_id == "GEN-010")
+
+    assert [(span.start, span.end) for span in finding.spans] == [(0, 2), (2, 4)]
+    assert finding.rule_version == "1"
+    assert finding.allow_save is True
+    assert result.content_version
+
+
+def test_rule_for_another_entrypoint_is_not_applied():
+    result = _scoped_engine(Entrypoint.OUTPUT, "风险").evaluate_text(
+        "风险",
+        context=_scoped_context(),
+        entrypoint=Entrypoint.INPUT,
+    )
+
+    assert result.findings == []
 
 
 def test_missing_entities_raise_missing_context(policy):

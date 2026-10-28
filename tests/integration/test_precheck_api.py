@@ -163,3 +163,49 @@ def test_precheck_findings_carry_plain_language_guidance(client):
     finding = body["findings"][0]
     assert finding["title"]
     assert finding["what_to_do"]
+
+
+def test_precheck_returns_every_repeated_phrase_span(client):
+    body = client.post(
+        "/api/cases/precheck",
+        json=_body("皮疹和皮疹，随后停药。"),
+    ).json()
+    finding = next(item for item in body["findings"] if item["rule_id"] == "CN-001")
+
+    assert [(span["start"], span["end"]) for span in finding["spans"]] == [
+        (0, 2),
+        (3, 5),
+        (8, 10),
+    ]
+
+
+def test_precheck_returns_spans_for_multiple_fragments(client):
+    body = client.post(
+        "/api/cases/precheck",
+        json=_body("皮疹并出现昏迷。"),
+    ).json()
+    spans_by_rule = {
+        item["rule_id"]: [(span["start"], span["end"]) for span in item["spans"]]
+        for item in body["findings"]
+    }
+
+    assert spans_by_rule["CN-001"] == [(0, 2)]
+    assert spans_by_rule["CN-002"] == [(5, 7)]
+
+
+def test_precheck_marks_spans_stale_when_client_version_differs(client):
+    current = client.post(
+        "/api/cases/precheck",
+        json=_body("患者服药后出现皮疹。"),
+    ).json()
+    stale = client.post(
+        "/api/cases/precheck",
+        json=_body(
+            "患者服药后出现皮疹。",
+            client_content_version="an-outdated-editor-version",
+        ),
+    ).json()
+
+    assert current["spans_stale"] is False
+    assert stale["spans_stale"] is True
+    assert stale["content_version"] == current["content_version"]
