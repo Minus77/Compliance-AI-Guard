@@ -25,3 +25,5 @@ data/golden_set/candidates.jsonl
 .superpowers/
 # live LLM credentials (never commit)
 config/secrets/
+
+.worktrees/
