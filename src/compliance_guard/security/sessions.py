@@ -30,10 +30,8 @@ usually done precisely because something leaked — leaves the leaked session al
 
 from __future__ import annotations
 
-import hashlib
-import hmac
-import logging
 import json
+import logging
 import secrets
 import threading
 from datetime import UTC, datetime, timedelta
@@ -45,21 +43,16 @@ from pydantic import Field
 from compliance_guard.domain.enums import Role
 from compliance_guard.domain.models import Actor, DomainModel
 from compliance_guard.runtime_paths import writable_data_dir
-
-# scrypt parameters. n=2^14 keeps an interactive login responsive while making a
-# large offline guessing run expensive.
-_SCRYPT_N = 2**14
-_SCRYPT_R = 8
-_SCRYPT_P = 1
-_SCRYPT_DKLEN = 32
-_SALT_BYTES = 16
+from compliance_guard.security.passwords import (
+    SessionError,
+    auth_failed,
+    hash_password,
+    verify_password,
+)
 
 _MIN_PASSWORD_CHARS = 12
 _DEFAULT_TTL_SECONDS = 8 * 60 * 60      # one working day
 _BOOTSTRAP_USERNAME = "admin"
-
-# Deliberately identical for every authentication failure.
-_AUTH_FAILED = "用户名或密码不正确"
 
 
 def announce_bootstrap_credential(username: str, password: str | None) -> None:
@@ -103,55 +96,6 @@ def announce_bootstrap_credential(username: str, password: str | None) -> None:
         "",
     ]
     print("\n".join(lines), flush=True)
-
-
-class SessionError(RuntimeError):
-    """Authentication or credential change refused."""
-
-
-def hash_password(password: str) -> str:
-    """Derive a storable representation of ``password``.
-
-    Format: ``scrypt$n$r$p$salt_hex$key_hex``. Self-describing so the parameters
-    can be raised later without invalidating existing records.
-    """
-    if password is None:
-        raise SessionError("password is required")
-    salt = secrets.token_bytes(_SALT_BYTES)
-    key = hashlib.scrypt(
-        str(password).encode("utf-8"),
-        salt=salt,
-        n=_SCRYPT_N,
-        r=_SCRYPT_R,
-        p=_SCRYPT_P,
-        dklen=_SCRYPT_DKLEN,
-    )
-    return f"scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${salt.hex()}${key.hex()}"
-
-
-def verify_password(password: str, stored: str) -> bool:
-    """Whether ``password`` matches ``stored``.
-
-    A malformed record returns False rather than raising: a corrupted user file
-    should deny access, not crash the login route into a 500 that leaks a stack
-    trace.
-    """
-    try:
-        scheme, n_text, r_text, p_text, salt_hex, key_hex = str(stored).split("$")
-        if scheme != "scrypt":
-            return False
-        key = hashlib.scrypt(
-            str(password).encode("utf-8"),
-            salt=bytes.fromhex(salt_hex),
-            n=int(n_text),
-            r=int(r_text),
-            p=int(p_text),
-            dklen=len(bytes.fromhex(key_hex)),
-        )
-    except (AttributeError, TypeError, ValueError):
-        return False
-    # Constant-time: a length-or-prefix comparison leaks information through timing.
-    return hmac.compare_digest(key, bytes.fromhex(key_hex))
 
 
 class User(DomainModel):
@@ -329,7 +273,7 @@ class SessionStore:
         with self._lock:
             user = self._users.get(str(username))
             if user is None or not verify_password(current, user.password_hash):
-                raise SessionError(_AUTH_FAILED)
+                raise SessionError(auth_failed())
             candidate = str(replacement or "")
             if len(candidate) < _MIN_PASSWORD_CHARS:
                 raise SessionError(
@@ -372,7 +316,7 @@ class SessionStore:
         with self._lock:
             user = self._users.get(str(username))
             if user is None or not verify_password(password, user.password_hash):
-                raise SessionError(_AUTH_FAILED)
+                raise SessionError(auth_failed())
 
             now = datetime.now(UTC)
             # Mark the account used, so it is never re-keyed on a later start.
