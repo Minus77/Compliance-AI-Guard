@@ -16,3 +16,17 @@ def test_shared_tracer_records_concurrent_spans():
         list(pool.map(record, range(workers)))
 
     assert len(tracer.spans_for_trace("trace-concurrent")) == workers * spans_per_worker
+
+
+def test_trace_reads_do_not_expose_recorded_spans():
+    tracer = Tracer()
+    span = tracer.start("check", case_id="case-1", trace_id="trace-1")
+    tracer.finish(span, attributes={"stage": "one"})
+
+    read = tracer.spans_for_trace("trace-1")[0]
+    read.status = "tampered"
+    read.attributes["stage"] = "tampered"
+
+    stored = tracer.spans(case_id="case-1")[0]
+    assert stored.status.value == "ok"
+    assert stored.attributes == {"stage": "one"}

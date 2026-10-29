@@ -268,16 +268,24 @@ class AuditLedger:
     def for_case(self, case_id: str) -> list[AuditEvent]:
         """Return all events for a case in append order."""
         with self._lock:
-            return [event for event in self._events if event.case_id == case_id]
+            return [
+                event.model_copy(deep=True)
+                for event in self._events
+                if event.case_id == case_id
+            ]
 
     def for_trace(self, trace_id: str) -> list[AuditEvent]:
         """Return all events sharing a trace id in append order."""
         with self._lock:
-            return [event for event in self._events if event.trace_id == trace_id]
+            return [
+                event.model_copy(deep=True)
+                for event in self._events
+                if event.trace_id == trace_id
+            ]
 
     def all(self) -> list[AuditEvent]:
         with self._lock:
-            return list(self._events)
+            return [event.model_copy(deep=True) for event in self._events]
 
     def count(self) -> int:
         with self._lock:

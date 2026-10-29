@@ -141,7 +141,7 @@ class Metrics:
 
     def snapshots(self) -> list[MetricsSnapshot]:
         with self._lock:
-            return list(self._snapshots)
+            return [snapshot.model_copy(deep=True) for snapshot in self._snapshots]
 
     def record_review_outcome(self, *, overridden: bool) -> None:
         """Record one completed review and whether it departed from the system."""

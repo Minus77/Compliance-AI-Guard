@@ -95,11 +95,15 @@ class Tracer:
                 result = [span for span in result if span.case_id == case_id]
             if trace_id is not None:
                 result = [span for span in result if span.trace_id == trace_id]
-            return list(result)
+            return [span.model_copy(deep=True) for span in result]
 
     def spans_for_trace(self, trace_id: str) -> list[TraceSpan]:
         with self._lock:
-            return [span for span in self._spans if span.trace_id == trace_id]
+            return [
+                span.model_copy(deep=True)
+                for span in self._spans
+                if span.trace_id == trace_id
+            ]
 
 
 __all__ = ["Tracer"]

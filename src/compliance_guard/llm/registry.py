@@ -292,7 +292,7 @@ class ModelRegistry:
 
     def audit_events(self) -> list[AuditEvent]:
         with self._lock:
-            return list(self._audit_events)
+            return [event.model_copy(deep=True) for event in self._audit_events]
 
     def draft(self, profile_or_route: ModelProfile | TaskRoute) -> None:
         """Stage a profile or route for an atomic publish (does not change live routes)."""

@@ -69,6 +69,17 @@ def test_intact_chain_verifies(ledger):
     assert result.checked == 5
 
 
+def test_reads_do_not_expose_mutable_audit_entries(ledger):
+    event = ledger.for_case("CASE-CHAIN")[0]
+    event.payload["step"] = 999
+    event.entry_hash = "tampered"
+
+    stored = ledger.all()[0]
+    assert stored.payload == {"step": 1}
+    assert stored.entry_hash != "tampered"
+    assert ledger.verify().ok is True
+
+
 def test_reload_from_disk_verifies(tmp_path, ledger):
     reloaded = AuditLedger(path=ledger.path)
     result = reloaded.verify()

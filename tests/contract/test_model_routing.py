@@ -365,6 +365,8 @@ def test_publish_records_audit_event(registry, admin_actor):
     assert events[0].actor is not None
     assert events[0].actor.role == Role.ADMIN
     assert events[0].configuration_versions["registry_version"] == "2"
+    events[0].configuration_versions["registry_version"] = "tampered"
+    assert registry.audit_events()[0].configuration_versions["registry_version"] == "2"
 
 
 def test_rollback_records_audit_event(registry, admin_actor):
