@@ -107,6 +107,14 @@ def test_a_session_still_works_when_demo_mode_is_off(client, monkeypatch):
     monkeypatch.delenv("DEMO_MODE", raising=False)
     password = client.app.state.services.sessions.bootstrap_password
     client.post("/api/auth/login", json={"username": "admin", "password": password})
+    client.post(
+        "/api/auth/change-password",
+        json={"current": password, "replacement": "a-much-longer-passphrase"},
+    )
+    client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "a-much-longer-passphrase"},
+    )
     assert client.get("/api/reviews").status_code == 200
 
 
@@ -128,6 +136,18 @@ def test_readiness_reports_pending_password_change(client):
     assert body["sessions"]["password_change_required"] is True
 
 
+def test_initial_password_must_be_changed_before_using_the_api(client):
+    password = client.app.state.services.sessions.bootstrap_password
+    client.post("/api/auth/login", json={"username": "admin", "password": password})
+
+    blocked = client.get("/api/reviews")
+    assert blocked.status_code == 403
+    assert blocked.json()["error"]["code"] == "password_change_required"
+
+    assert client.get("/api/auth/me").status_code == 200
+    assert client.get("/health/ready").status_code == 200
+
+
 def test_readiness_never_exposes_a_password_or_token(client):
     password = client.app.state.services.sessions.bootstrap_password
     client.post("/api/auth/login", json={"username": "admin", "password": password})
@@ -141,5 +161,13 @@ def test_session_identity_is_used_for_ownership_not_the_header(client, monkeypat
     monkeypatch.delenv("DEMO_MODE", raising=False)
     password = client.app.state.services.sessions.bootstrap_password
     client.post("/api/auth/login", json={"username": "admin", "password": password})
+    client.post(
+        "/api/auth/change-password",
+        json={"current": password, "replacement": "a-much-longer-passphrase"},
+    )
+    client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "a-much-longer-passphrase"},
+    )
     body = client.get("/api/cases", params={"scope": "mine"}).json()
     assert body["scope"] in {"mine", "all"}

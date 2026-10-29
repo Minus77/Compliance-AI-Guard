@@ -107,6 +107,14 @@ def test_declaring_a_benign_scenario_does_not_change_examination(client, monkeyp
     assert client.post(
         "/api/auth/login", json={"username": "admin", "password": password}
     ).status_code == 200
+    assert client.post(
+        "/api/auth/change-password",
+        json={"current": password, "replacement": "a-much-longer-passphrase"},
+    ).status_code == 200
+    assert client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "a-much-longer-passphrase"},
+    ).status_code == 200
 
     honest = client.post(
         "/api/cases/check",

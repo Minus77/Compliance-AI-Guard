@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from compliance_guard.audit.ledger import AuditLedger
 from compliance_guard.audit.metrics import Metrics
@@ -214,7 +215,24 @@ def _register_request_correlation(app: FastAPI) -> None:
         request.state.session = session
         token = _CURRENT_SESSION.set(session)
         try:
-            response = await call_next(request)
+            path = request.url.path
+            if (
+                session is not None
+                and session.must_change_password
+                and path.startswith("/api/")
+                and not path.startswith("/api/auth/")
+            ):
+                response = JSONResponse(
+                    status_code=403,
+                    content={
+                        "error": {
+                            "code": "password_change_required",
+                            "message": "change the initial password at /api/auth/change-password",
+                        }
+                    },
+                )
+            else:
+                response = await call_next(request)
         finally:
             _CURRENT_SESSION.reset(token)
         response.headers["x-request-id"] = request_id
