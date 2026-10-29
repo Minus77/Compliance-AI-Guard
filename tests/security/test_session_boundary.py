@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import pytest
 
+from compliance_guard.security import sessions
 from compliance_guard.security.sessions import (
     SessionError,
     SessionStore,
@@ -152,3 +153,21 @@ def test_sessions_survive_a_store_reload(store):
     session = store.login("admin", store.bootstrap_password)
     reloaded = SessionStore(path=store.path)
     assert reloaded.resolve(session.token) is not None
+
+
+def test_failed_store_write_preserves_the_previous_file(store, monkeypatch):
+    previous = store.path.read_bytes()
+
+    def fail_replace(source, destination):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(sessions.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="disk full"):
+        store.login("admin", store.bootstrap_password)
+
+    assert store.path.read_bytes() == previous
+    assert not list(store.path.parent.glob(f".{store.path.name}.*.tmp"))
+
+
+def test_store_file_is_private_to_the_operating_system_user(store):
+    assert store.path.stat().st_mode & 0o777 == 0o600

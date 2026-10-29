@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import secrets
 import threading
 from datetime import UTC, datetime, timedelta
@@ -211,9 +212,19 @@ class SessionStore:
                 for token, session in self._sessions.items()
             },
         }
-        self._path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        temporary = self._path.with_name(f".{self._path.name}.{secrets.token_hex(8)}.tmp")
+        try:
+            descriptor = os.open(
+                temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+            )
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, ensure_ascii=False, indent=2))
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self._path)
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
 
     # -- accounts ------------------------------------------------------------
 
