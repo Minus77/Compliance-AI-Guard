@@ -15,6 +15,9 @@ never invents provider-specific API IDs.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -153,6 +156,7 @@ class ModelRegistry:
         self._runtime_path = Path(runtime_path) if runtime_path else _default_runtime_path()
         self._prompts_dir = Path(prompts_dir) if prompts_dir else _default_prompts_dir()
         self._auth = auth or AuthorizationService()
+        self._lock = threading.RLock()
 
         self._profiles: dict[str, ModelProfile] = {}
         self._routes: dict[TaskType, TaskRoute] = {}
@@ -173,6 +177,10 @@ class ModelRegistry:
         authoritative published state and survives restart; defaults are only used
         to bootstrap when no newer snapshot exists.
         """
+        with self._lock:
+            return self._load_defaults()
+
+    def _load_defaults(self) -> "ModelRegistry":
         raw_profiles = _load_raw(self._profiles_path)
         raw_routes = _load_raw(self._routes_path)
         _reject_plaintext_secrets(raw_profiles, raw_routes)
@@ -273,24 +281,28 @@ class ModelRegistry:
         return self
 
     def profile(self, profile_id: str) -> ModelProfile | None:
-        profile = self._profiles.get(profile_id)
-        return profile.model_copy(deep=True) if profile is not None else None
+        with self._lock:
+            profile = self._profiles.get(profile_id)
+            return profile.model_copy(deep=True) if profile is not None else None
 
     def route(self, task_type: TaskType | str) -> TaskRoute | None:
-        route = self._routes.get(TaskType(task_type))
-        return route.model_copy(deep=True) if route is not None else None
+        with self._lock:
+            route = self._routes.get(TaskType(task_type))
+            return route.model_copy(deep=True) if route is not None else None
 
     def audit_events(self) -> list[AuditEvent]:
-        return list(self._audit_events)
+        with self._lock:
+            return list(self._audit_events)
 
     def draft(self, profile_or_route: ModelProfile | TaskRoute) -> None:
         """Stage a profile or route for an atomic publish (does not change live routes)."""
-        if isinstance(profile_or_route, ModelProfile):
-            self._drafts[profile_or_route.profile_id] = profile_or_route
-        elif isinstance(profile_or_route, TaskRoute):
-            self._route_drafts[profile_or_route.task_type] = profile_or_route
-        else:
-            raise TypeError("draft accepts ModelProfile or TaskRoute")
+        with self._lock:
+            if isinstance(profile_or_route, ModelProfile):
+                self._drafts[profile_or_route.profile_id] = profile_or_route
+            elif isinstance(profile_or_route, TaskRoute):
+                self._route_drafts[profile_or_route.task_type] = profile_or_route
+            else:
+                raise TypeError("draft accepts ModelProfile or TaskRoute")
 
     def _draft_problems(self) -> list[str]:
         problems: list[str] = []
@@ -350,10 +362,11 @@ class ModelRegistry:
 
     def validate_draft(self) -> list[str]:
         """Validate staged drafts; raises DraftValidationError when incompatible."""
-        problems = self._draft_problems()
-        if problems:
-            raise DraftValidationError("; ".join(problems))
-        return problems
+        with self._lock:
+            problems = self._draft_problems()
+            if problems:
+                raise DraftValidationError("; ".join(problems))
+            return problems
 
     def publish(self, actor: Any | None = None, *, bootstrap: bool = False) -> str:
         """Validate and atomically apply drafts as a new immutable published version.
@@ -368,27 +381,28 @@ class ModelRegistry:
                     "publish requires an authorized actor (or bootstrap=True for trusted startup)"
                 )
             self._auth.require(actor, "config_publish")
-        self.validate_draft()
-        next_profiles = {
-            profile_id: profile.model_copy(deep=True)
-            for profile_id, profile in {**self._profiles, **self._drafts}.items()
-        }
-        next_routes = {
-            task_type: route.model_copy(deep=True)
-            for task_type, route in {**self._routes, **self._route_drafts}.items()
-        }
+        with self._lock:
+            self.validate_draft()
+            next_profiles = {
+                profile_id: profile.model_copy(deep=True)
+                for profile_id, profile in {**self._profiles, **self._drafts}.items()
+            }
+            next_routes = {
+                task_type: route.model_copy(deep=True)
+                for task_type, route in {**self._routes, **self._route_drafts}.items()
+            }
 
-        self._history.append(
-            _StableSnapshot(self._version, self._copy_profiles(), self._copy_routes())
-        )
-        self._version += 1
-        self._profiles = next_profiles
-        self._routes = next_routes
-        self._drafts.clear()
-        self._route_drafts.clear()
-        self._persist_snapshot()
-        self._record_audit("config_publish", actor if not bootstrap else None, str(self._version))
-        return str(self._version)
+            self._history.append(
+                _StableSnapshot(self._version, self._copy_profiles(), self._copy_routes())
+            )
+            self._version += 1
+            self._profiles = next_profiles
+            self._routes = next_routes
+            self._drafts.clear()
+            self._route_drafts.clear()
+            self._persist_snapshot()
+            self._record_audit("config_publish", actor if not bootstrap else None, str(self._version))
+            return str(self._version)
 
     def rollback(self, actor: Any | None = None, *, bootstrap: bool = False) -> str:
         """Restore the previous stable published version.
@@ -402,31 +416,33 @@ class ModelRegistry:
                     "rollback requires an authorized actor (or bootstrap=True for trusted startup)"
                 )
             self._auth.require(actor, "config_rollback")
-        if not self._history:
-            raise DraftValidationError("no previous stable version to roll back to")
-        previous = self._history.pop()
-        self._profiles = self._copy_profiles_from(previous.profiles)
-        self._routes = self._copy_routes_from(previous.routes)
-        self._version = previous.version
-        self._drafts.clear()
-        self._route_drafts.clear()
-        self._persist_snapshot()
-        self._record_audit("config_rollback", actor if not bootstrap else None, str(self._version))
-        return str(self._version)
+        with self._lock:
+            if not self._history:
+                raise DraftValidationError("no previous stable version to roll back to")
+            previous = self._history.pop()
+            self._profiles = self._copy_profiles_from(previous.profiles)
+            self._routes = self._copy_routes_from(previous.routes)
+            self._version = previous.version
+            self._drafts.clear()
+            self._route_drafts.clear()
+            self._persist_snapshot()
+            self._record_audit("config_rollback", actor if not bootstrap else None, str(self._version))
+            return str(self._version)
 
     def current_snapshot(self) -> RegistrySnapshot:
-        return RegistrySnapshot(
-            version=str(self._version),
-            profiles={
-                profile_id: profile.model_copy(deep=True)
-                for profile_id, profile in self._profiles.items()
-            },
-            routes={
-                task_type.value: route.model_copy(deep=True)
-                for task_type, route in self._routes.items()
-            },
-            redacted=True,
-        )
+        with self._lock:
+            return RegistrySnapshot(
+                version=str(self._version),
+                profiles={
+                    profile_id: profile.model_copy(deep=True)
+                    for profile_id, profile in self._profiles.items()
+                },
+                routes={
+                    task_type.value: route.model_copy(deep=True)
+                    for task_type, route in self._routes.items()
+                },
+                redacted=True,
+            )
 
     def _copy_profiles(self) -> dict[str, ModelProfile]:
         return {
@@ -483,9 +499,23 @@ class ModelRegistry:
                 for task_type, route in self._routes.items()
             },
         }
-        self._runtime_path.write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=f".{self._runtime_path.name}.",
+            suffix=".tmp",
+            dir=self._runtime_path.parent,
         )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2, ensure_ascii=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_name, self._runtime_path)
+        except BaseException:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            raise
 
     def resolve(
         self,
@@ -494,17 +524,18 @@ class ModelRegistry:
         data_class: str | None = None,
         region: str | None = None,
     ) -> ResolvedRoute:
-        router = TaskRouter(
-            self._profiles,
-            self._routes,
-            published_profile_ids=set(self._profiles),
-        )
-        resolved = router.resolve(task_type, modality, data_class, region)
-        resolved.primary_profile = resolved.primary_profile.model_copy(deep=True)
-        resolved.fallback_profiles = [
-            profile.model_copy(deep=True) for profile in resolved.fallback_profiles
-        ]
-        return resolved
+        with self._lock:
+            router = TaskRouter(
+                self._profiles,
+                self._routes,
+                published_profile_ids=set(self._profiles),
+            )
+            resolved = router.resolve(task_type, modality, data_class, region)
+            resolved.primary_profile = resolved.primary_profile.model_copy(deep=True)
+            resolved.fallback_profiles = [
+                profile.model_copy(deep=True) for profile in resolved.fallback_profiles
+            ]
+            return resolved
 
 
 __all__ = [

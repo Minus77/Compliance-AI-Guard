@@ -1,5 +1,7 @@
 """Task-level model routing: registry, drafts, publish/rollback, and classifier."""
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -237,6 +239,22 @@ def test_publish_produces_monotonic_versions(registry, admin_actor):
     third = registry.publish(admin_actor)
     assert int(second) == int(first) + 1
     assert int(third) == int(second) + 1
+
+
+def test_concurrent_publishes_produce_unique_versions(registry, admin_actor):
+    workers = 8
+    start = threading.Barrier(workers)
+
+    def publish(_):
+        start.wait()
+        return registry.publish(admin_actor)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        versions = list(pool.map(publish, range(workers)))
+
+    assert set(versions) == {str(version) for version in range(2, workers + 2)}
+    assert registry.current_snapshot().version == str(workers + 1)
+    assert len(registry.audit_events()) == workers
 
 
 def test_published_routes_are_immutable(registry, admin_actor):
