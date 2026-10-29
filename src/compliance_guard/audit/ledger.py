@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import threading
 import uuid
 from datetime import UTC
 from pathlib import Path
@@ -72,6 +74,9 @@ class AuditLedger:
         self._path = Path(path) if path is not None else _default_audit_path()
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._events: list[AuditEvent] = self._load()
+        # shortcut: locking is process-local; use a shared transactional ledger
+        # when multiple worker processes append to the same file.
+        self._lock = threading.RLock()
 
     @property
     def path(self) -> Path:
@@ -113,34 +118,39 @@ class AuditLedger:
         never hashed. Pretending to extend an unhashed history would produce a
         chain that verifies while proving nothing about the entries beneath it.
         """
-        head = self._events[-1] if self._events else None
-        if head is not None and head.entry_hash:
-            prev_hash = head.entry_hash
-            seq = head.seq + 1
-        else:
-            prev_hash = ""
-            seq = 1
-        linked = event.model_copy(update={"seq": seq, "prev_hash": prev_hash, "entry_hash": ""})
-        linked = linked.model_copy(
-            update={"entry_hash": self.compute_entry_hash(prev_hash, linked)}
-        )
-        try:
-            with self._path.open("a", encoding="utf-8") as handle:
-                handle.write(
-                    json.dumps(
-                        linked.model_dump(mode="json"),
-                        ensure_ascii=False,
-                        sort_keys=True,
+        with self._lock:
+            head = self._events[-1] if self._events else None
+            if head is not None and head.entry_hash:
+                prev_hash = head.entry_hash
+                seq = head.seq + 1
+            else:
+                prev_hash = ""
+                seq = 1
+            linked = event.model_copy(
+                update={"seq": seq, "prev_hash": prev_hash, "entry_hash": ""}
+            )
+            linked = linked.model_copy(
+                update={"entry_hash": self.compute_entry_hash(prev_hash, linked)}
+            )
+            try:
+                with self._path.open("a", encoding="utf-8") as handle:
+                    handle.write(
+                        json.dumps(
+                            linked.model_dump(mode="json"),
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        )
+                        + "\n"
                     )
-                    + "\n"
-                )
-        except OSError as error:
-            # A failed write must not leave an event that exists only in memory:
-            # callers could otherwise release content while the durable trail is
-            # missing the record that authorized the release.
-            raise AuditWriteError("audit ledger write failed") from error
-        self._events.append(linked)
-        return linked
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            except OSError as error:
+                # A failed write must not leave an event that exists only in memory:
+                # callers could otherwise release content while the durable trail is
+                # missing the record that authorized the release.
+                raise AuditWriteError("audit ledger write failed") from error
+            self._events.append(linked)
+            return linked
 
     def append_tombstone(self, tombstone: Tombstone) -> AuditEvent:
         """Append deletion evidence without retaining the deleted content."""
@@ -257,21 +267,26 @@ class AuditLedger:
 
     def for_case(self, case_id: str) -> list[AuditEvent]:
         """Return all events for a case in append order."""
-        return [event for event in self._events if event.case_id == case_id]
+        with self._lock:
+            return [event for event in self._events if event.case_id == case_id]
 
     def for_trace(self, trace_id: str) -> list[AuditEvent]:
         """Return all events sharing a trace id in append order."""
-        return [event for event in self._events if event.trace_id == trace_id]
+        with self._lock:
+            return [event for event in self._events if event.trace_id == trace_id]
 
     def all(self) -> list[AuditEvent]:
-        return list(self._events)
+        with self._lock:
+            return list(self._events)
 
     def count(self) -> int:
-        return len(self._events)
+        with self._lock:
+            return len(self._events)
 
     def head_hash(self) -> str:
         """Digest of the newest chained entry; empty if there is none."""
-        return self._events[-1].entry_hash if self._events else ""
+        with self._lock:
+            return self._events[-1].entry_hash if self._events else ""
 
 
 __all__ = ["AuditLedger", "ChainVerification"]

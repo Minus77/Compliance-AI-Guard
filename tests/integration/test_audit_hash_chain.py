@@ -13,6 +13,8 @@ the change may happen, but it cannot happen invisibly.
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 import pytest
@@ -143,3 +145,21 @@ def test_appending_after_reload_continues_the_chain(ledger):
     assert result.ok is True
     assert result.checked == 6
     assert reloaded.all()[-1].seq == 6
+
+
+def test_concurrent_appends_keep_one_contiguous_chain(tmp_path):
+    store = AuditLedger(path=tmp_path / "audit_ledger.jsonl")
+    workers = 8
+    start = threading.Barrier(workers)
+
+    def append(index: int) -> None:
+        start.wait()
+        store.append(_event(index))
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(append, range(1, workers + 1)))
+
+    verification = AuditLedger(path=store.path).verify()
+    assert verification.ok is True
+    assert verification.checked == workers
+    assert [event.seq for event in store.all()] == list(range(1, workers + 1))
