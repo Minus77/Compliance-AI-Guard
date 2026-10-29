@@ -32,11 +32,18 @@ def _actor(actor_id: str = "demo-field_rep") -> Actor:
 
 
 @pytest.fixture
-def store() -> LifecycleStore:
-    return LifecycleStore()
+def clock() -> list[datetime]:
+    return [datetime.now(UTC)]
 
 
-def _notify(store: LifecycleStore, *, age_days: int) -> str:
+@pytest.fixture
+def store(clock) -> LifecycleStore:
+    return LifecycleStore(now=lambda: clock[0])
+
+
+def _notify(store: LifecycleStore, clock: list[datetime], *, age_days: int) -> str:
+    now = datetime.now(UTC)
+    clock[0] = now - timedelta(days=age_days)
     note = store.notify(
         case_id="CASE-1",
         recipient_id="demo-field_rep",
@@ -44,38 +51,37 @@ def _notify(store: LifecycleStore, *, age_days: int) -> str:
         title="已退回",
         next_step="请补充信息",
     )
-    # Backdate rather than sleep: the behaviour under test is the cutoff, not the clock.
-    note.created_at = datetime.now(UTC) - timedelta(days=age_days)
+    clock[0] = now
     return note.notification_id
 
 
-def test_old_notifications_are_purged(store):
-    _notify(store, age_days=200)
+def test_old_notifications_are_purged(store, clock):
+    _notify(store, clock, age_days=200)
     removed = store.purge_expired()
     assert removed["notifications"] == 1
     assert store.notifications("demo-field_rep") == []
 
 
-def test_recent_notifications_survive(store):
-    _notify(store, age_days=3)
+def test_recent_notifications_survive(store, clock):
+    _notify(store, clock, age_days=3)
     store.purge_expired()
     assert len(store.notifications("demo-field_rep")) == 1
 
 
-def test_the_cutoff_matches_the_declared_policy(store):
+def test_the_cutoff_matches_the_declared_policy(store, clock):
     """90 days is declared; 89 must live and 91 must not."""
     from compliance_guard.runtime_config import retention_policy
 
     assert retention_policy()["notification"]["retain_days"] == 90
-    _notify(store, age_days=89)
-    _notify(store, age_days=91)
+    _notify(store, clock, age_days=89)
+    _notify(store, clock, age_days=91)
     store.purge_expired()
     assert len(store.notifications("demo-field_rep")) == 1
 
 
-def test_an_unread_notification_is_never_purged_early(store):
+def test_an_unread_notification_is_never_purged_early(store, clock):
     """Expiring something the author has not seen would lose the outcome silently."""
-    note_id = _notify(store, age_days=200)
+    note_id = _notify(store, clock, age_days=200)
     note = next(n for n in store.notifications("demo-field_rep") if n.notification_id == note_id)
     assert note.unread is True
     removed = store.purge_expired(keep_unread=True)
@@ -83,7 +89,8 @@ def test_an_unread_notification_is_never_purged_early(store):
     assert len(store.notifications("demo-field_rep")) == 1
 
 
-def test_resolved_appeals_expire(store):
+def test_resolved_appeals_expire(store, clock):
+    clock[0] -= timedelta(days=200)
     appeal = store.raise_appeal(
         case_id="CASE-1", reason="判错了", actor=_actor(), decision_at_appeal="blocked"
     )
@@ -93,25 +100,25 @@ def test_resolved_appeals_expire(store):
         upheld=True,
         reason="维持原判定",
     )
-    resolved = store.appeals(case_id="CASE-1")[0]
-    resolved.resolved_at = datetime.now(UTC) - timedelta(days=200)
+    clock[0] += timedelta(days=200)
     removed = store.purge_expired()
     assert removed["appeals"] == 1
 
 
-def test_a_pending_appeal_is_never_purged(store):
+def test_a_pending_appeal_is_never_purged(store, clock):
     """An open appeal is outstanding work; expiring it would close it by neglect."""
-    appeal = store.raise_appeal(
+    clock[0] -= timedelta(days=500)
+    store.raise_appeal(
         case_id="CASE-1", reason="判错了", actor=_actor(), decision_at_appeal="blocked"
     )
-    appeal.created_at = datetime.now(UTC) - timedelta(days=500)
+    clock[0] += timedelta(days=500)
     removed = store.purge_expired()
     assert removed["appeals"] == 0
     assert len(store.appeals(pending_only=True)) == 1
 
 
-def test_purge_reports_what_it_removed(store):
-    _notify(store, age_days=200)
+def test_purge_reports_what_it_removed(store, clock):
+    _notify(store, clock, age_days=200)
     removed = store.purge_expired()
     assert set(removed) >= {"notifications", "appeals"}
     assert all(isinstance(value, int) for value in removed.values())
@@ -119,6 +126,26 @@ def test_purge_reports_what_it_removed(store):
 
 def test_purging_an_empty_store_is_a_no_op(store):
     assert store.purge_expired() == {"notifications": 0, "appeals": 0}
+
+
+def test_returned_records_cannot_mutate_stored_state(store):
+    note = store.notify(
+        case_id="CASE-1",
+        recipient_id="demo-field_rep",
+        kind=NotificationKind.REVIEW_DECIDED,
+        title="已处理",
+    )
+    note.title = "tampered"
+    appeal = store.raise_appeal(
+        case_id="CASE-1",
+        reason="申请复核",
+        actor=_actor(),
+        decision_at_appeal="blocked",
+    )
+    appeal.reason = "tampered"
+
+    assert store.notifications("demo-field_rep")[0].title == "已处理"
+    assert store.appeals(case_id="CASE-1")[0].reason == "申请复核"
 
 
 def test_concurrent_operations_keep_a_coherent_store(store):

@@ -44,11 +44,16 @@ def test_reading_notifications_sweeps_expired_ones(client):
 
     # Age it past the declared 90 days, and mark it read so the unread guard does
     # not (correctly) protect it.
-    note = next(
-        n for n in store.notifications("demo-field_rep") if n.notification_id == note_id
-    )
-    note.created_at = datetime.now(UTC) - timedelta(days=200)
-    note.read_at = datetime.now(UTC) - timedelta(days=199)
+    with store._lock:
+        store._notifications = [
+            note.model_copy(
+                update={
+                    "created_at": datetime.now(UTC) - timedelta(days=200),
+                    "read_at": datetime.now(UTC) - timedelta(days=199),
+                }
+            )
+            for note in store._notifications
+        ]
 
     body = client.get("/api/notifications", headers=REP).json()
     assert note_id not in [item["notification_id"] for item in body["notifications"]]
@@ -58,10 +63,13 @@ def test_an_unread_outcome_is_never_swept(client):
     """Expiring something the author has not seen loses the outcome silently."""
     note_id = _notify_via_review(client)
     store = client.app.state.services.lifecycle
-    note = next(
-        n for n in store.notifications("demo-field_rep") if n.notification_id == note_id
-    )
-    note.created_at = datetime.now(UTC) - timedelta(days=500)
+    with store._lock:
+        store._notifications = [
+            note.model_copy(
+                update={"created_at": datetime.now(UTC) - timedelta(days=500)}
+            )
+            for note in store._notifications
+        ]
 
     body = client.get("/api/notifications", headers=REP).json()
     assert note_id in [item["notification_id"] for item in body["notifications"]]

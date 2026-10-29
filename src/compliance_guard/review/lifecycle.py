@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import threading
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Callable
 
 from compliance_guard.domain.models import Actor
 from compliance_guard.review.lifecycle_contracts import (
@@ -46,8 +46,9 @@ class LifecycleStore:
     implement.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, now: Callable[[], datetime] | None = None) -> None:
         self._lock = threading.RLock()
+        self._now = now or (lambda: datetime.now(UTC))
         self._notifications: list[Notification] = []
         self._appeals: list[Appeal] = []
 
@@ -73,9 +74,10 @@ class LifecycleStore:
                 body=body,
                 next_step=next_step,
                 decision=decision,
+                created_at=self._now(),
             )
             self._notifications.append(note)
-            return note
+            return note.model_copy(deep=True)
 
     def notifications(self, recipient_id: str, *, unread_only: bool = False) -> list[Notification]:
         """Newest first: the most recent outcome is the one being waited on."""
@@ -83,7 +85,10 @@ class LifecycleStore:
             items = [note for note in self._notifications if note.recipient_id == recipient_id]
             if unread_only:
                 items = [note for note in items if note.unread]
-            return sorted(items, key=lambda note: note.created_at, reverse=True)
+            return [
+                note.model_copy(deep=True)
+                for note in sorted(items, key=lambda note: note.created_at, reverse=True)
+            ]
 
     def mark_read(self, notification_id: str, *, recipient_id: str) -> Notification:
         with self._lock:
@@ -93,8 +98,8 @@ class LifecycleStore:
                 if note.recipient_id != recipient_id:
                     raise PermissionError("a notification can only be read by its recipient")
                 if note.read_at is None:
-                    note.read_at = datetime.now(UTC)
-                return note
+                    note.read_at = self._now()
+                return note.model_copy(deep=True)
             raise KeyError(f"unknown notification {notification_id!r}")
 
     def unread_count(self, recipient_id: str) -> int:
@@ -119,9 +124,10 @@ class LifecycleStore:
                 reason=str(reason).strip(),
                 raised_by=actor.actor_id,
                 decision_at_appeal=decision_at_appeal,
+                created_at=self._now(),
             )
             self._appeals.append(appeal)
-            return appeal
+            return appeal.model_copy(deep=True)
 
     def resolve_appeal(
         self,
@@ -138,12 +144,12 @@ class LifecycleStore:
                 if appeal.appeal_id != appeal_id:
                     continue
                 if appeal.status is not AppealStatus.PENDING:
-                    return appeal
+                    return appeal.model_copy(deep=True)
                 appeal.status = AppealStatus.UPHELD if upheld else AppealStatus.OVERTURNED
                 appeal.resolved_by = actor.actor_id
-                appeal.resolved_at = datetime.now(UTC)
+                appeal.resolved_at = self._now()
                 appeal.resolution_reason = str(reason).strip()
-                return appeal
+                return appeal.model_copy(deep=True)
             raise KeyError(f"unknown appeal {appeal_id!r}")
 
     def appeals(self, *, case_id: str | None = None, pending_only: bool = False) -> list[Appeal]:
@@ -153,7 +159,10 @@ class LifecycleStore:
                 items = [appeal for appeal in items if appeal.case_id == case_id]
             if pending_only:
                 items = [appeal for appeal in items if appeal.status is AppealStatus.PENDING]
-            return sorted(items, key=lambda appeal: appeal.created_at, reverse=True)
+            return [
+                appeal.model_copy(deep=True)
+                for appeal in sorted(items, key=lambda appeal: appeal.created_at, reverse=True)
+            ]
 
     # -- retention -----------------------------------------------------------
 
@@ -186,7 +195,7 @@ class LifecycleStore:
 
         with self._lock:
             policy = retention_policy()
-            moment = now or datetime.now(UTC)
+            moment = now or self._now()
             removed = {"notifications": 0, "appeals": 0}
 
             note_days = policy.get("notification", {}).get("retain_days")
