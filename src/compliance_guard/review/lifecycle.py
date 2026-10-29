@@ -24,6 +24,7 @@ notification store is one more place a name could settle.
 
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -46,6 +47,7 @@ class LifecycleStore:
     """
 
     def __init__(self) -> None:
+        self._lock = threading.RLock()
         self._notifications: list[Notification] = []
         self._appeals: list[Appeal] = []
 
@@ -62,35 +64,38 @@ class LifecycleStore:
         next_step: str = "",
         decision: str = "",
     ) -> Notification:
-        note = Notification(
-            case_id=case_id,
-            recipient_id=recipient_id,
-            kind=kind,
-            title=title,
-            body=body,
-            next_step=next_step,
-            decision=decision,
-        )
-        self._notifications.append(note)
-        return note
+        with self._lock:
+            note = Notification(
+                case_id=case_id,
+                recipient_id=recipient_id,
+                kind=kind,
+                title=title,
+                body=body,
+                next_step=next_step,
+                decision=decision,
+            )
+            self._notifications.append(note)
+            return note
 
     def notifications(self, recipient_id: str, *, unread_only: bool = False) -> list[Notification]:
         """Newest first: the most recent outcome is the one being waited on."""
-        items = [note for note in self._notifications if note.recipient_id == recipient_id]
-        if unread_only:
-            items = [note for note in items if note.unread]
-        return sorted(items, key=lambda note: note.created_at, reverse=True)
+        with self._lock:
+            items = [note for note in self._notifications if note.recipient_id == recipient_id]
+            if unread_only:
+                items = [note for note in items if note.unread]
+            return sorted(items, key=lambda note: note.created_at, reverse=True)
 
     def mark_read(self, notification_id: str, *, recipient_id: str) -> Notification:
-        for note in self._notifications:
-            if note.notification_id != notification_id:
-                continue
-            if note.recipient_id != recipient_id:
-                raise PermissionError("a notification can only be read by its recipient")
-            if note.read_at is None:
-                note.read_at = datetime.now(UTC)
-            return note
-        raise KeyError(f"unknown notification {notification_id!r}")
+        with self._lock:
+            for note in self._notifications:
+                if note.notification_id != notification_id:
+                    continue
+                if note.recipient_id != recipient_id:
+                    raise PermissionError("a notification can only be read by its recipient")
+                if note.read_at is None:
+                    note.read_at = datetime.now(UTC)
+                return note
+            raise KeyError(f"unknown notification {notification_id!r}")
 
     def unread_count(self, recipient_id: str) -> int:
         return len(self.notifications(recipient_id, unread_only=True))
@@ -108,14 +113,15 @@ class LifecycleStore:
         """Record a disagreement. The current decision is untouched by design."""
         if not reason or not str(reason).strip():
             raise ValueError("an appeal requires a reason")
-        appeal = Appeal(
-            case_id=case_id,
-            reason=str(reason).strip(),
-            raised_by=actor.actor_id,
-            decision_at_appeal=decision_at_appeal,
-        )
-        self._appeals.append(appeal)
-        return appeal
+        with self._lock:
+            appeal = Appeal(
+                case_id=case_id,
+                reason=str(reason).strip(),
+                raised_by=actor.actor_id,
+                decision_at_appeal=decision_at_appeal,
+            )
+            self._appeals.append(appeal)
+            return appeal
 
     def resolve_appeal(
         self,
@@ -127,25 +133,27 @@ class LifecycleStore:
     ) -> Appeal:
         if not reason or not str(reason).strip():
             raise ValueError("resolving an appeal requires a reason")
-        for appeal in self._appeals:
-            if appeal.appeal_id != appeal_id:
-                continue
-            if appeal.status is not AppealStatus.PENDING:
+        with self._lock:
+            for appeal in self._appeals:
+                if appeal.appeal_id != appeal_id:
+                    continue
+                if appeal.status is not AppealStatus.PENDING:
+                    return appeal
+                appeal.status = AppealStatus.UPHELD if upheld else AppealStatus.OVERTURNED
+                appeal.resolved_by = actor.actor_id
+                appeal.resolved_at = datetime.now(UTC)
+                appeal.resolution_reason = str(reason).strip()
                 return appeal
-            appeal.status = AppealStatus.UPHELD if upheld else AppealStatus.OVERTURNED
-            appeal.resolved_by = actor.actor_id
-            appeal.resolved_at = datetime.now(UTC)
-            appeal.resolution_reason = str(reason).strip()
-            return appeal
-        raise KeyError(f"unknown appeal {appeal_id!r}")
+            raise KeyError(f"unknown appeal {appeal_id!r}")
 
     def appeals(self, *, case_id: str | None = None, pending_only: bool = False) -> list[Appeal]:
-        items = list(self._appeals)
-        if case_id is not None:
-            items = [appeal for appeal in items if appeal.case_id == case_id]
-        if pending_only:
-            items = [appeal for appeal in items if appeal.status is AppealStatus.PENDING]
-        return sorted(items, key=lambda appeal: appeal.created_at, reverse=True)
+        with self._lock:
+            items = list(self._appeals)
+            if case_id is not None:
+                items = [appeal for appeal in items if appeal.case_id == case_id]
+            if pending_only:
+                items = [appeal for appeal in items if appeal.status is AppealStatus.PENDING]
+            return sorted(items, key=lambda appeal: appeal.created_at, reverse=True)
 
     # -- retention -----------------------------------------------------------
 
@@ -176,43 +184,44 @@ class LifecycleStore:
         """
         from compliance_guard.runtime_config import retention_policy
 
-        policy = retention_policy()
-        moment = now or datetime.now(UTC)
-        removed = {"notifications": 0, "appeals": 0}
+        with self._lock:
+            policy = retention_policy()
+            moment = now or datetime.now(UTC)
+            removed = {"notifications": 0, "appeals": 0}
 
-        note_days = policy.get("notification", {}).get("retain_days")
-        if note_days is not None:
-            cutoff = moment - timedelta(days=int(note_days))
-            keep: list[Notification] = []
-            for note in self._notifications:
-                expired = note.created_at < cutoff
-                if expired and keep_unread and note.unread:
-                    expired = False
-                if expired:
-                    removed["notifications"] += 1
-                else:
-                    keep.append(note)
-            self._notifications = keep
+            note_days = policy.get("notification", {}).get("retain_days")
+            if note_days is not None:
+                cutoff = moment - timedelta(days=int(note_days))
+                keep: list[Notification] = []
+                for note in self._notifications:
+                    expired = note.created_at < cutoff
+                    if expired and keep_unread and note.unread:
+                        expired = False
+                    if expired:
+                        removed["notifications"] += 1
+                    else:
+                        keep.append(note)
+                self._notifications = keep
 
-        # Appeals follow the notification period: both are records of an outcome
-        # already delivered, and neither is the authoritative case record.
-        appeal_days = policy.get("notification", {}).get("retain_days")
-        if appeal_days is not None:
-            cutoff = moment - timedelta(days=int(appeal_days))
-            keep_appeals: list[Appeal] = []
-            for appeal in self._appeals:
-                resolved_at = appeal.resolved_at
-                # Pending appeals are outstanding work, never swept.
-                if appeal.status is AppealStatus.PENDING or resolved_at is None:
-                    keep_appeals.append(appeal)
-                    continue
-                if resolved_at < cutoff:
-                    removed["appeals"] += 1
-                else:
-                    keep_appeals.append(appeal)
-            self._appeals = keep_appeals
+            # Appeals follow the notification period: both are records of an outcome
+            # already delivered, and neither is the authoritative case record.
+            appeal_days = policy.get("notification", {}).get("retain_days")
+            if appeal_days is not None:
+                cutoff = moment - timedelta(days=int(appeal_days))
+                keep_appeals: list[Appeal] = []
+                for appeal in self._appeals:
+                    resolved_at = appeal.resolved_at
+                    # Pending appeals are outstanding work, never swept.
+                    if appeal.status is AppealStatus.PENDING or resolved_at is None:
+                        keep_appeals.append(appeal)
+                        continue
+                    if resolved_at < cutoff:
+                        removed["appeals"] += 1
+                    else:
+                        keep_appeals.append(appeal)
+                self._appeals = keep_appeals
 
-        return removed
+            return removed
 
     def appeal_summary(self) -> dict[str, Any]:
         """Counts for the quality dashboard.
@@ -221,20 +230,21 @@ class LifecycleStore:
         it says the rules are too tight and should be fixed at the rule, rather
         than absorbed case by case by whoever is on the queue.
         """
-        total = len(self._appeals)
-        pending = sum(1 for a in self._appeals if a.status is AppealStatus.PENDING)
-        overturned = sum(1 for a in self._appeals if a.status is AppealStatus.OVERTURNED)
-        resolved = total - pending
-        return {
-            "total": total,
-            "pending": pending,
-            "upheld": sum(1 for a in self._appeals if a.status is AppealStatus.UPHELD),
-            "overturned": overturned,
-            # Denominator attached: a rate over three appeals means little, and a
-            # bare percentage would hide that.
-            "overturn_rate": round(overturned / resolved, 4) if resolved else None,
-            "resolved": resolved,
-        }
+        with self._lock:
+            total = len(self._appeals)
+            pending = sum(1 for a in self._appeals if a.status is AppealStatus.PENDING)
+            overturned = sum(1 for a in self._appeals if a.status is AppealStatus.OVERTURNED)
+            resolved = total - pending
+            return {
+                "total": total,
+                "pending": pending,
+                "upheld": sum(1 for a in self._appeals if a.status is AppealStatus.UPHELD),
+                "overturned": overturned,
+                # Denominator attached: a rate over three appeals means little, and a
+                # bare percentage would hide that.
+                "overturn_rate": round(overturned / resolved, 4) if resolved else None,
+                "resolved": resolved,
+            }
 
 
 __all__ = [

@@ -16,6 +16,8 @@ The asymmetry is the whole point and is asserted here rather than described:
 
 from __future__ import annotations
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -117,6 +119,49 @@ def test_purge_reports_what_it_removed(store):
 
 def test_purging_an_empty_store_is_a_no_op(store):
     assert store.purge_expired() == {"notifications": 0, "appeals": 0}
+
+
+def test_concurrent_operations_keep_a_coherent_store(store):
+    workers = 8
+    start = threading.Barrier(workers)
+    actor = _actor()
+
+    def use_store(index: int) -> None:
+        start.wait()
+        store.notify(
+            case_id=f"CASE-{index}",
+            recipient_id=actor.actor_id,
+            kind=NotificationKind.REVIEW_DECIDED,
+            title="已处理",
+        )
+        appeal = store.raise_appeal(
+            case_id=f"CASE-{index}",
+            reason="申请复核",
+            actor=actor,
+            decision_at_appeal="blocked",
+        )
+        store.resolve_appeal(
+            appeal.appeal_id,
+            actor=actor,
+            upheld=index % 2 == 0,
+            reason="已复核",
+        )
+        store.appeals(pending_only=True)
+        store.appeal_summary()
+        store.purge_expired(keep_unread=True)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(use_store, range(workers)))
+
+    assert len(store.notifications(actor.actor_id)) == workers
+    assert store.appeal_summary() == {
+        "total": workers,
+        "pending": 0,
+        "upheld": workers // 2,
+        "overturned": workers // 2,
+        "overturn_rate": 0.5,
+        "resolved": workers,
+    }
 
 
 # -- the audit ledger is deliberately exempt --------------------------------
