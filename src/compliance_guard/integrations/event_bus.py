@@ -22,6 +22,7 @@ a successful replay applies side effects exactly once.
 from __future__ import annotations
 
 import hashlib
+import threading
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Callable
@@ -74,6 +75,8 @@ class EventBus:
         self._ledger = ledger
         self._now = now
         self._max_attempts = max_attempts
+        # Dedup lookup, side effects, and audit append are one atomic decision.
+        self._lock = threading.RLock()
         self._processed: dict[tuple[str, str], NormalizedEvent] = {}
         self._dlq: dict[tuple[str, str], DeadLetterRecord] = {}
         self._case_counts: dict[tuple[str, str], int] = {}
@@ -91,107 +94,114 @@ class EventBus:
 
     def receive_event(self, envelope: ExternalEvent | dict[str, Any]) -> NormalizedEvent:
         """Normalize, deduplicate, process, or dead-letter one event."""
-        try:
-            normalized = receive_event(envelope)
-        except SchemaError as exc:
-            placeholder = self._placeholder(exc)
-            self._dead_letter(
-                placeholder,
-                key=(placeholder.tenant_id, placeholder.event_id),
-                exc=exc,
-                retryable=False,
-            )
-            return placeholder
-        key = (normalized.tenant_id, normalized.event_id)
-        existing = self._processed.get(key)
-        if existing is not None:
+        with self._lock:
+            try:
+                normalized = receive_event(envelope)
+            except SchemaError as exc:
+                placeholder = self._placeholder(exc)
+                self._dead_letter(
+                    placeholder,
+                    key=(placeholder.tenant_id, placeholder.event_id),
+                    exc=exc,
+                    retryable=False,
+                )
+                return placeholder
+            key = (normalized.tenant_id, normalized.event_id)
+            existing = self._processed.get(key)
+            if existing is not None:
+                self._audit(
+                    "event_duplicate",
+                    case_id=existing.case_id or "",
+                    trace_id=existing.trace_id or "",
+                    payload={"event_id": existing.event_id},
+                )
+                return existing
+            parked = self._dlq.get(key)
+            if parked is not None and (not parked.retryable or parked.attempt_count >= self._max_attempts):
+                return normalized
             self._audit(
-                "event_duplicate",
-                case_id=existing.case_id or "",
-                trace_id=existing.trace_id or "",
-                payload={"event_id": existing.event_id},
+                "event_received",
+                case_id="",
+                trace_id=normalized.trace_id or "",
+                payload={"event_id": normalized.event_id, "event_type": normalized.event_type},
             )
-            return existing
-        parked = self._dlq.get(key)
-        if parked is not None and (not parked.retryable or parked.attempt_count >= self._max_attempts):
+            try:
+                case_id = self._handler(normalized)
+            except RetryableProcessingError as exc:
+                self._dead_letter(normalized, key=key, exc=exc, retryable=True)
+                return normalized
+            except (NonRetryableProcessingError, PermissionError) as exc:
+                self._dead_letter(normalized, key=key, exc=exc, retryable=False)
+                return normalized
+            self._commit(normalized, case_id)
             return normalized
-        self._audit(
-            "event_received",
-            case_id="",
-            trace_id=normalized.trace_id or "",
-            payload={"event_id": normalized.event_id, "event_type": normalized.event_type},
-        )
-        try:
-            case_id = self._handler(normalized)
-        except RetryableProcessingError as exc:
-            self._dead_letter(normalized, key=key, exc=exc, retryable=True)
-            return normalized
-        except (NonRetryableProcessingError, PermissionError) as exc:
-            self._dead_letter(normalized, key=key, exc=exc, retryable=False)
-            return normalized
-        self._commit(normalized, case_id)
-        return normalized
 
     def created_case_count(self, event_id: str, tenant_id: str | None = None) -> int:
         """Number of cases created for an event id; never more than one per tenant."""
-        if tenant_id is not None:
-            return self._case_counts.get((tenant_id, event_id), 0)
-        return sum(count for (tid, eid), count in self._case_counts.items() if eid == event_id)
+        with self._lock:
+            if tenant_id is not None:
+                return self._case_counts.get((tenant_id, event_id), 0)
+            return sum(count for (tid, eid), count in self._case_counts.items() if eid == event_id)
 
     def review_tasks_for_event(self, event_id: str, tenant_id: str | None = None) -> list[ReviewTask]:
-        if tenant_id is not None:
-            task = self._review_tasks.get((tenant_id, event_id))
-            return [task] if task is not None else []
-        return [task for (tid, eid), task in self._review_tasks.items() if eid == event_id]
+        with self._lock:
+            if tenant_id is not None:
+                task = self._review_tasks.get((tenant_id, event_id))
+                return [task] if task is not None else []
+            return [task for (tid, eid), task in self._review_tasks.items() if eid == event_id]
 
     def review_task_count(self, event_id: str, tenant_id: str | None = None) -> int:
-        if tenant_id is not None:
-            return 1 if (tenant_id, event_id) in self._review_tasks else 0
-        return sum(1 for (tid, eid) in self._review_tasks if eid == event_id)
+        with self._lock:
+            if tenant_id is not None:
+                return 1 if (tenant_id, event_id) in self._review_tasks else 0
+            return sum(1 for (tid, eid) in self._review_tasks if eid == event_id)
 
     def processed(self) -> list[NormalizedEvent]:
-        return list(self._processed.values())
+        with self._lock:
+            return list(self._processed.values())
 
     def read_dlq(self) -> list[DeadLetterRecord]:
         """Return all dead-lettered records for inspection."""
-        return list(self._dlq.values())
+        with self._lock:
+            return list(self._dlq.values())
 
     def replay_dlq(self, record_id: str | None = None) -> list[NormalizedEvent]:
         """Replay one or all dead-lettered events; side effects apply at most once."""
-        records = self._select_dlq(record_id)
-        replayed: list[NormalizedEvent] = []
-        for record in records:
-            if record.event is None:
-                record.next_action = "manual_review"
-                continue
-            if record.error_type == "SchemaError":
-                record.next_action = "manual_review"
-                continue
-            key = (record.tenant_id, record.event_id)
-            if key in self._processed:
-                self._dlq.pop(key, None)
-                replayed.append(self._processed[key])
-                continue
-            if record.attempt_count >= self._max_attempts:
-                record.next_action = "manual_review"
-                continue
-            try:
-                case_id = self._handler(record.event)
-            except RetryableProcessingError as exc:
-                self._record_failure(record, exc, retryable=True)
-                continue
-            except (NonRetryableProcessingError, PermissionError) as exc:
-                self._record_failure(record, exc, retryable=False)
-                continue
-            self._commit(record.event, case_id)
-            self._audit(
-                "dlq_replay",
-                case_id=record.event.case_id or "",
-                trace_id=record.event.trace_id or "",
-                payload={"event_id": record.event.event_id},
-            )
-            replayed.append(record.event)
-        return replayed
+        with self._lock:
+            records = self._select_dlq(record_id)
+            replayed: list[NormalizedEvent] = []
+            for record in records:
+                if record.event is None:
+                    record.next_action = "manual_review"
+                    continue
+                if record.error_type == "SchemaError":
+                    record.next_action = "manual_review"
+                    continue
+                key = (record.tenant_id, record.event_id)
+                if key in self._processed:
+                    self._dlq.pop(key, None)
+                    replayed.append(self._processed[key])
+                    continue
+                if record.attempt_count >= self._max_attempts:
+                    record.next_action = "manual_review"
+                    continue
+                try:
+                    case_id = self._handler(record.event)
+                except RetryableProcessingError as exc:
+                    self._record_failure(record, exc, retryable=True)
+                    continue
+                except (NonRetryableProcessingError, PermissionError) as exc:
+                    self._record_failure(record, exc, retryable=False)
+                    continue
+                self._commit(record.event, case_id)
+                self._audit(
+                    "dlq_replay",
+                    case_id=record.event.case_id or "",
+                    trace_id=record.event.trace_id or "",
+                    payload={"event_id": record.event.event_id},
+                )
+                replayed.append(record.event)
+            return replayed
 
     # -- internals -------------------------------------------------------------
 

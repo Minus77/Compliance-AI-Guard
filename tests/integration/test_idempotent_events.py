@@ -8,7 +8,9 @@ Covers the Task 7 event bus contract:
 - audit events are recorded for bus actions
 """
 
+import threading
 from datetime import UTC, datetime
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -53,6 +55,46 @@ def test_duplicate_event_does_not_create_duplicate_review_tasks(event_bus, sampl
     assert len(tasks) == 1
     assert tasks[0].case_id == first.case_id
     assert event_bus.review_task_count(sample_event.event_id) == 1
+
+
+def test_concurrent_duplicates_run_the_handler_once(sample_event):
+    workers = 8
+    start = threading.Barrier(workers)
+    first_in_handler = threading.Event()
+    second_entered = threading.Event()
+    release_first = threading.Event()
+    calls = 0
+    calls_lock = threading.Lock()
+
+    def handler(normalized):
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+            call_number = calls
+        if call_number == 1:
+            first_in_handler.set()
+            release_first.wait(timeout=1)
+        else:
+            second_entered.set()
+        return f"CASE-{normalized.event_id}"
+
+    bus = EventBus(handler=handler)
+
+    def deliver():
+        start.wait()
+        return bus.receive_event(sample_event)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(deliver) for _ in range(workers)]
+        assert first_in_handler.wait(timeout=1)
+        another_entered = second_entered.wait(timeout=0.1)
+        release_first.set()
+        results = [future.result(timeout=1) for future in futures]
+
+    assert another_entered is False
+    assert calls == 1
+    assert {result.case_id for result in results} == {"CASE-EVT-001"}
+    assert bus.created_case_count(sample_event.event_id) == 1
 
 
 def test_schema_error_goes_to_dead_letter_queue(event_bus):
