@@ -38,7 +38,7 @@ from typing import Any
 
 from pydantic import Field
 
-from compliance_guard.domain.enums import Decision, Entrypoint
+from compliance_guard.domain.enums import DECISION_RANK, Decision, Entrypoint
 from compliance_guard.domain.models import (
     CaseContext,
     CharacterSpan,
@@ -62,16 +62,6 @@ _RESERVED_CLAIM_KEYS = frozenset(
 # Rules about retrieval state rather than about the text being written. See the
 # module docstring: surfacing these during typing creates an uncleanable warning.
 _EVIDENCE_RULES = frozenset({"CN-010", "CN-011", "CN-012", "CN-013"})
-
-# Same ordering the policy engine uses, so a pre-check verdict and a submit
-# verdict rank outcomes identically.
-_DECISION_RANK = {
-    Decision.BLOCKED: 0,
-    Decision.REFUSED: 1,
-    Decision.HUMAN_REVIEW: 2,
-    Decision.NEEDS_INFO: 3,
-    Decision.ALLOW: 4,
-}
 
 # Budget from the three-tier latency design: L1 must stay clear of the point
 # where a hint stops feeling like part of typing.
@@ -291,7 +281,7 @@ class PrecheckService:
             return Decision.ALLOW
         return min(
             (finding.decision for finding in relevant),
-            key=lambda decision: _DECISION_RANK[decision],
+            key=lambda decision: DECISION_RANK[decision],
         )
 
     def _present(self, finding: Any, locale: str) -> PrecheckFinding:

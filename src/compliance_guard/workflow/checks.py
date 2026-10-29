@@ -16,6 +16,7 @@ from compliance_guard.domain.enums import (
     Decision,
     Entrypoint,
     Severity,
+    SEVERITY_RANK,
     normalize_content_type,
 )
 from compliance_guard.domain.models import (
@@ -29,14 +30,6 @@ from compliance_guard.domain.models import (
 )
 from compliance_guard.policy.bundles import PolicyBundleStore
 from compliance_guard.workflow.precheck import PrecheckResult, PrecheckService
-
-
-_SEVERITY_RANK = {
-    Severity.S0: 0,
-    Severity.S1: 1,
-    Severity.S2: 2,
-    Severity.S3: 3,
-}
 
 
 class CheckRequest(DomainModel):
@@ -302,7 +295,7 @@ class CheckService:
     def _severity(findings: list[CheckFinding]) -> Severity:
         if not findings:
             return Severity.S3
-        return min((finding.severity for finding in findings), key=_SEVERITY_RANK.get)
+        return min((finding.severity for finding in findings), key=SEVERITY_RANK.get)
 
 
 __all__ = ["CheckFinding", "CheckRequest", "CheckResult", "CheckService"]

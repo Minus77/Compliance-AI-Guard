@@ -18,6 +18,22 @@ class Severity(str, Enum):
     S3 = "S3"
 
 
+DECISION_RANK = {
+    Decision.BLOCKED: 0,
+    Decision.REFUSED: 1,
+    Decision.HUMAN_REVIEW: 2,
+    Decision.NEEDS_INFO: 3,
+    Decision.ALLOW: 4,
+}
+
+SEVERITY_RANK = {
+    Severity.S0: 0,
+    Severity.S1: 1,
+    Severity.S2: 2,
+    Severity.S3: 3,
+}
+
+
 class CaseState(str, Enum):
     RECEIVED = "RECEIVED"
     AUTHORIZED = "AUTHORIZED"

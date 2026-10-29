@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from compliance_guard.domain.enums import Role, ReviewTaskStatus, Severity
+from compliance_guard.domain.enums import SEVERITY_RANK, Role, ReviewTaskStatus
 from compliance_guard.domain.models import AuditEvent, ReviewTask
 from compliance_guard.security.authorization import AuthorizationService
 
@@ -23,8 +23,6 @@ _SLA_TIMEDELTA = {
     "24h": timedelta(hours=24),
     "72h": timedelta(hours=72),
 }
-_SEVERITY_RANK = {Severity.S0: 0, Severity.S1: 1, Severity.S2: 2, Severity.S3: 3}
-
 # Roles whose queue items are technical / platform-security work rather than
 # medical-business review. They are still created, still audited, and the case
 # stays blocked; they are simply not part of the professional (medical /
@@ -127,7 +125,7 @@ class ReviewQueue:
 
     @staticmethod
     def _sort_key(task: ReviewTask):
-        severity_rank = _SEVERITY_RANK.get(task.severity, 3)
+        severity_rank = SEVERITY_RANK.get(task.severity, 3)
         sla_rank = _SLA_RANK.get(task.sla_label or "72h", 5)
         return (severity_rank, sla_rank, task.market or "", task.required_role.value)
 

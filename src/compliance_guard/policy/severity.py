@@ -8,22 +8,8 @@ unapproved promotion, and approval-bypass events.
 
 from __future__ import annotations
 
-from compliance_guard.domain.enums import Decision, Severity
+from compliance_guard.domain.enums import DECISION_RANK, SEVERITY_RANK, Severity
 from compliance_guard.domain.models import DomainModel
-
-_SEVERITY_RANK = {
-    Severity.S0: 0,
-    Severity.S1: 1,
-    Severity.S2: 2,
-    Severity.S3: 3,
-}
-_DECISION_RANK = {
-    Decision.BLOCKED: 0,
-    Decision.REFUSED: 1,
-    Decision.HUMAN_REVIEW: 2,
-    Decision.NEEDS_INFO: 3,
-    Decision.ALLOW: 4,
-}
 
 
 class SeverityResult(DomainModel):
@@ -43,9 +29,9 @@ def calculate_severity(findings) -> SeverityResult:
             irreversible=False,
         )
 
-    highest = min(findings, key=lambda finding: _SEVERITY_RANK[finding.severity])
+    highest = min(findings, key=lambda finding: SEVERITY_RANK[finding.severity])
     drivers = [finding for finding in findings if finding.severity == highest.severity]
-    blocking = min(drivers, key=lambda finding: _DECISION_RANK[finding.decision])
+    blocking = min(drivers, key=lambda finding: DECISION_RANK[finding.decision])
     irreversible = any(getattr(driver, "irreversible", False) for driver in drivers)
 
     basis = (

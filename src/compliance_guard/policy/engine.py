@@ -16,11 +16,13 @@ from typing import Any
 from pydantic import Field
 
 from compliance_guard.domain.enums import (
+    DECISION_RANK,
     Decision,
     Entrypoint,
     EvidenceStatus,
     Role,
     SecurityAction,
+    SEVERITY_RANK,
     Severity,
     normalize_content_type,
 )
@@ -84,19 +86,6 @@ _SERVER_DETERMINED_RULE_IDS = frozenset(
     }
 )
 
-_DECISION_RANK = {
-    Decision.BLOCKED: 0,
-    Decision.REFUSED: 1,
-    Decision.HUMAN_REVIEW: 2,
-    Decision.NEEDS_INFO: 3,
-    Decision.ALLOW: 4,
-}
-_SEVERITY_RANK = {
-    Severity.S0: 0,
-    Severity.S1: 1,
-    Severity.S2: 2,
-    Severity.S3: 3,
-}
 _HIGH_RISK = frozenset({Severity.S0, Severity.S1})
 
 
@@ -317,9 +306,9 @@ class PolicyEngine:
         #   subsumed rule's reasoning is still absorbed above, so nothing is lost.
         if keep_existing_disposition:
             return
-        if _SEVERITY_RANK[incoming.severity] < _SEVERITY_RANK[existing.severity]:
+        if SEVERITY_RANK[incoming.severity] < SEVERITY_RANK[existing.severity]:
             existing.severity = incoming.severity
-        if _DECISION_RANK[incoming.decision] < _DECISION_RANK[existing.decision]:
+        if DECISION_RANK[incoming.decision] < DECISION_RANK[existing.decision]:
             existing.decision = incoming.decision
 
         existing.evidence_gap = existing.evidence_gap or incoming.evidence_gap
@@ -522,7 +511,7 @@ class PolicyEngine:
             finding = self._new_finding(rule, evidence_pack, [security_finding.reason or security_finding.type], decision)
             finding.severity = min(
                 (rule.severity, security_finding.severity),
-                key=lambda severity: _SEVERITY_RANK[severity],
+                key=lambda severity: SEVERITY_RANK[severity],
             )
             if security_finding.evidence_refs:
                 finding.evidence_refs = list(security_finding.evidence_refs)
@@ -673,7 +662,10 @@ class PolicyEngine:
             if evidence_missing:
                 return Decision.NEEDS_INFO
             return Decision.ALLOW
-        top = min((finding.decision for finding in findings), key=lambda decision: _DECISION_RANK[decision])
+        top = min(
+            (finding.decision for finding in findings),
+            key=lambda decision: DECISION_RANK[decision],
+        )
         if top is Decision.ALLOW:
             if evidence_missing:
                 top = Decision.NEEDS_INFO
