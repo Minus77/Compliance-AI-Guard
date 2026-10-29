@@ -100,6 +100,19 @@ def test_session_token_resolves_to_an_actor(store):
     assert resolved.actor.actor_id == session.actor.actor_id
 
 
+def test_mutating_resolved_objects_cannot_change_stored_access(store):
+    session = store.login("admin", store.bootstrap_password)
+    user = store.user("admin")
+    resolved = store.resolve(session.token)
+    assert user is not None and resolved is not None
+
+    user.must_change_password = False
+    resolved.must_change_password = False
+
+    assert store.user("admin").must_change_password is True
+    assert store.resolve(session.token).must_change_password is True
+
+
 def test_unknown_token_resolves_to_nothing(store):
     assert store.resolve("not-a-real-token") is None
 

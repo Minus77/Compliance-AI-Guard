@@ -229,7 +229,9 @@ class SessionStore:
     # -- accounts ------------------------------------------------------------
 
     def user(self, username: str) -> User | None:
-        return self._users.get(str(username))
+        with self._lock:
+            user = self._users.get(str(username))
+            return user.model_copy(deep=True) if user is not None else None
 
     def change_password(self, username: str, current: str, replacement: str) -> User:
         """Replace a password and end every session for that account."""
@@ -260,7 +262,7 @@ class SessionStore:
                 if session.username != updated.username
             }
             self._flush()
-            return updated
+            return updated.model_copy(deep=True)
 
     # -- sessions ------------------------------------------------------------
 
@@ -298,7 +300,7 @@ class SessionStore:
             self._sessions[session.token] = session
             self._prune()
             self._flush()
-            return session
+            return session.model_copy(deep=True)
 
     def resolve(self, token: str | None) -> Session | None:
         """The session for ``token``, or None when absent or expired."""
@@ -312,7 +314,7 @@ class SessionStore:
                 self._sessions.pop(session.token, None)
                 self._flush()
                 return None
-            return session
+            return session.model_copy(deep=True)
 
     def logout(self, token: str | None) -> None:
         if not token:
@@ -332,18 +334,19 @@ class SessionStore:
 
     def summary(self) -> dict[str, Any]:
         """Non-sensitive view for a readiness probe."""
-        return {
-            "users": len(self._users),
-            "active_sessions": len(self._sessions),
-            "password_change_required": any(
-                user.must_change_password for user in self._users.values()
-            ),
-            # A bootstrap credential is waiting to be used. Reported as a flag only:
-            # the value itself is shown once, on the console, and never in an API
-            # response an unauthenticated caller could read.
-            "bootstrap_pending": any(user.never_used for user in self._users.values()),
-            "path": str(self._path),
-        }
+        with self._lock:
+            return {
+                "users": len(self._users),
+                "active_sessions": len(self._sessions),
+                "password_change_required": any(
+                    user.must_change_password for user in self._users.values()
+                ),
+                # A bootstrap credential is waiting to be used. Reported as a flag only:
+                # the value itself is shown once, on the console, and never in an API
+                # response an unauthenticated caller could read.
+                "bootstrap_pending": any(user.never_used for user in self._users.values()),
+                "path": str(self._path),
+            }
 
 
 __all__ = [
