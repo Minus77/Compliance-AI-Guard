@@ -13,8 +13,6 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import Field
-
 from compliance_guard.domain.enums import (
     DECISION_RANK,
     Decision,
@@ -40,6 +38,7 @@ from compliance_guard.knowledge.evidence_pack import EvidencePack
 from compliance_guard.knowledge.label_facts import LabelFacts, compare_label_fields
 
 from .bundles import PolicyRule, parse_bundle_rules
+from .result_contracts import PolicyFinding, PolicyResult
 from .routing import RaciMatrix, ReviewPlan, default_raci, route_review
 from .severity import calculate_severity
 from .spans import TextOffsetMap, find_spans
@@ -91,37 +90,6 @@ _HIGH_RISK = frozenset({Severity.S0, Severity.S1})
 
 def _norm_type(value: str) -> str:
     return value.strip().lower().replace("/", "_").replace("-", "_").replace(" ", "_")
-
-
-class PolicyFinding(Finding):
-    """A server-owned finding extended with the auditable rule and roles."""
-
-    rule_id: str = ""
-    required_roles: list[Role] = Field(default_factory=list)
-    sla_label: str | None = None
-    irreversible: bool = False
-    spans: list[CharacterSpan] = Field(default_factory=list)
-    rule_version: str = ""
-    category: str = ""
-    allow_save: bool = True
-    allow_generate: bool = True
-    allow_publish: bool = True
-    notification_message: str = ""
-    remediation_guidance: str = ""
-
-
-class PolicyResult(DomainModel):
-    decision: Decision
-    severity: Severity
-    findings: list[PolicyFinding] = Field(default_factory=list)
-    policy_version: str
-    reasons: list[str] = Field(default_factory=list)
-    routing: ReviewPlan | None = None
-    evidence_gap: bool = False
-    rule_ids: list[str] = Field(default_factory=list)
-    case_id: str = ""
-    trace_id: str = ""
-    content_version: str = ""
 
 
 class PolicyEngine:
