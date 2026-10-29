@@ -256,3 +256,39 @@ def test_diagnostics_scoped_by_tenant_and_event(event_bus, sample_event):
     assert event_bus.review_task_count(sample_event.event_id) == 2
     tasks = event_bus.review_tasks_for_event(sample_event.event_id, "TENANT-CN")
     assert len(tasks) == 1
+
+
+def test_public_reads_do_not_expose_internal_event_state(event_bus, sample_event):
+    original = event_bus.receive_event(sample_event)
+    original.case_id = "tampered"
+    original.payload["market"] = "tampered"
+    task = event_bus.review_tasks_for_event(sample_event.event_id)[0]
+    task.status = "tampered"
+
+    stored = event_bus.processed()[0]
+    assert stored.case_id == event_bus.receive_event(sample_event).case_id
+    assert stored.payload["market"] == "CN"
+    assert event_bus.review_tasks_for_event(sample_event.event_id)[0].status.value == "pending"
+
+
+def test_dlq_and_replay_reads_do_not_expose_internal_event_state(sample_event):
+    state = {"fail": True}
+
+    def flaky(normalized):
+        if state["fail"]:
+            raise RetryableProcessingError("transient outage")
+        return f"CASE-{normalized.event_id}"
+
+    bus = EventBus(handler=flaky)
+    bus.receive_event(sample_event)
+    record = bus.read_dlq()[0]
+    record.next_action = "tampered"
+    assert record.event is not None
+    record.event.payload["market"] = "tampered"
+    assert bus.read_dlq()[0].next_action == "retry"
+    assert bus.read_dlq()[0].event.payload["market"] == "CN"
+
+    state["fail"] = False
+    replayed = bus.replay_dlq()[0]
+    replayed.case_id = "tampered"
+    assert bus.processed()[0].case_id == "CASE-EVT-001"

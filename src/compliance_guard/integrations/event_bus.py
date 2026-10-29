@@ -105,7 +105,7 @@ class EventBus:
                     exc=exc,
                     retryable=False,
                 )
-                return placeholder
+                return placeholder.model_copy(deep=True)
             key = (normalized.tenant_id, normalized.event_id)
             existing = self._processed.get(key)
             if existing is not None:
@@ -115,10 +115,10 @@ class EventBus:
                     trace_id=existing.trace_id or "",
                     payload={"event_id": existing.event_id},
                 )
-                return existing
+                return existing.model_copy(deep=True)
             parked = self._dlq.get(key)
             if parked is not None and (not parked.retryable or parked.attempt_count >= self._max_attempts):
-                return normalized
+                return normalized.model_copy(deep=True)
             self._audit(
                 "event_received",
                 case_id="",
@@ -129,12 +129,12 @@ class EventBus:
                 case_id = self._handler(normalized)
             except RetryableProcessingError as exc:
                 self._dead_letter(normalized, key=key, exc=exc, retryable=True)
-                return normalized
+                return normalized.model_copy(deep=True)
             except (NonRetryableProcessingError, PermissionError) as exc:
                 self._dead_letter(normalized, key=key, exc=exc, retryable=False)
-                return normalized
+                return normalized.model_copy(deep=True)
             self._commit(normalized, case_id)
-            return normalized
+            return normalized.model_copy(deep=True)
 
     def created_case_count(self, event_id: str, tenant_id: str | None = None) -> int:
         """Number of cases created for an event id; never more than one per tenant."""
@@ -147,8 +147,12 @@ class EventBus:
         with self._lock:
             if tenant_id is not None:
                 task = self._review_tasks.get((tenant_id, event_id))
-                return [task] if task is not None else []
-            return [task for (tid, eid), task in self._review_tasks.items() if eid == event_id]
+                return [task.model_copy(deep=True)] if task is not None else []
+            return [
+                task.model_copy(deep=True)
+                for (tid, eid), task in self._review_tasks.items()
+                if eid == event_id
+            ]
 
     def review_task_count(self, event_id: str, tenant_id: str | None = None) -> int:
         with self._lock:
@@ -158,12 +162,12 @@ class EventBus:
 
     def processed(self) -> list[NormalizedEvent]:
         with self._lock:
-            return list(self._processed.values())
+            return [event.model_copy(deep=True) for event in self._processed.values()]
 
     def read_dlq(self) -> list[DeadLetterRecord]:
         """Return all dead-lettered records for inspection."""
         with self._lock:
-            return list(self._dlq.values())
+            return [record.model_copy(deep=True) for record in self._dlq.values()]
 
     def replay_dlq(self, record_id: str | None = None) -> list[NormalizedEvent]:
         """Replay one or all dead-lettered events; side effects apply at most once."""
@@ -201,7 +205,7 @@ class EventBus:
                     payload={"event_id": record.event.event_id},
                 )
                 replayed.append(record.event)
-            return replayed
+            return [event.model_copy(deep=True) for event in replayed]
 
     # -- internals -------------------------------------------------------------
 
