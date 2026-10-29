@@ -9,6 +9,7 @@ the application.
 
 from __future__ import annotations
 
+import threading
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -23,6 +24,7 @@ class Tracer:
 
     def __init__(self, trace_id: str | None = None) -> None:
         self._spans: list[TraceSpan] = []
+        self._lock = threading.RLock()
         self._default_trace_id = trace_id or f"trace-{uuid.uuid4().hex}"
 
     @property
@@ -50,7 +52,8 @@ class Tracer:
             started_at=datetime.now(UTC),
             parent_span_id=parent_span_id,
         )
-        self._spans.append(span)
+        with self._lock:
+            self._spans.append(span)
         return span
 
     def finish(
@@ -60,10 +63,11 @@ class Tracer:
         status: SpanStatus = SpanStatus.OK,
         attributes: dict | None = None,
     ) -> TraceSpan:
-        span.ended_at = datetime.now(UTC)
-        span.status = status
-        if attributes:
-            span.attributes.update(attributes)
+        with self._lock:
+            span.ended_at = datetime.now(UTC)
+            span.status = status
+            if attributes:
+                span.attributes.update(attributes)
         return span
 
     @contextmanager
@@ -85,15 +89,17 @@ class Tracer:
             self.finish(span)
 
     def spans(self, *, case_id: str | None = None, trace_id: str | None = None) -> list[TraceSpan]:
-        result = self._spans
-        if case_id is not None:
-            result = [span for span in result if span.case_id == case_id]
-        if trace_id is not None:
-            result = [span for span in result if span.trace_id == trace_id]
-        return list(result)
+        with self._lock:
+            result = self._spans
+            if case_id is not None:
+                result = [span for span in result if span.case_id == case_id]
+            if trace_id is not None:
+                result = [span for span in result if span.trace_id == trace_id]
+            return list(result)
 
     def spans_for_trace(self, trace_id: str) -> list[TraceSpan]:
-        return [span for span in self._spans if span.trace_id == trace_id]
+        with self._lock:
+            return [span for span in self._spans if span.trace_id == trace_id]
 
 
 __all__ = ["Tracer"]
