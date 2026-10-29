@@ -8,14 +8,12 @@ routing, and every override is written to the audit ledger.
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
 
-from pydantic import Field
-
 from compliance_guard.domain.enums import Decision, ReviewTaskStatus, Severity
-from compliance_guard.domain.models import Actor, AuditEvent, DomainModel
-from compliance_guard.audit.signature import ElectronicSignature, sign_record
+from compliance_guard.domain.models import Actor, AuditEvent
+from compliance_guard.audit.signature import sign_record
+from compliance_guard.review.decision_contracts import DecisionRecord
 
 _REVIEW_ACTION_TO_DECISION = {
     "accepted": Decision.ALLOW,
@@ -25,30 +23,6 @@ _REVIEW_ACTION_TO_DECISION = {
     "escalated": Decision.HUMAN_REVIEW,
     "needs_info": Decision.NEEDS_INFO,
 }
-
-
-class DecisionRecord(DomainModel):
-    """Immutable record of one review override with before/after values."""
-
-    record_id: str = Field(default_factory=lambda: f"decision-{uuid.uuid4().hex}")
-    task_id: str
-    case_id: str
-    trace_id: str
-    actor: Actor
-    decision: str
-    override_reason: str
-    before_decision: str
-    after_decision: str
-    before_severity: str | None = None
-    after_severity: str | None = None
-    before_routing: list[str] = Field(default_factory=list)
-    after_routing: list[str] = Field(default_factory=list)
-    purpose: str = ""
-    recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    audit_event_id: str = Field(default_factory=lambda: f"audit-{uuid.uuid4().hex}")
-    # Part 11-style manifestation: signer, time, and meaning of the signing,
-    # digest-bound to the decision content so tampering is detectable.
-    signature: ElectronicSignature | None = None
 
 
 class DecisionService:
