@@ -1,33 +1,14 @@
 """Live HTTP adapter for an OpenAI-compatible chat-completions provider.
 
 This adapter is the only component in the system that opens a network socket.
-It is deliberately thin and keeps every existing boundary guarantee:
-
-* **It never decides anything.** It returns a candidate ``RawModelResult``.
-  Decision, severity, routing and approval stay server-controlled downstream
-  (``policy.engine`` and ``agents.evaluator``), exactly as in mock mode.
-* **It only sees sanitized text.** The orchestrator masks PII/PHI before the
-  model call and passes the tokenized text as the request content. This adapter
-  does not re-read the raw content.
-* **It fails safe, never open.** Any credential problem, timeout, HTTP error,
-  or unparseable body becomes an ``error_category`` on the result, which the
-  orchestrator turns into ``FAILED_SAFE`` / manual review. A model that cannot
-  be reached must never look like an approval.
-* **Secrets never travel outward.** The API key is read server-side, sent only
-  in the ``Authorization`` header, and never placed in results, audit payloads,
-  or exceptions.
-
-The provider is addressed by the *business* profile id (for example
-``deepseek-routine``), which maps to an opaque server-side endpoint file. The
-upstream model name is therefore configuration, not code, and can change
-without touching any compliance logic.
+It returns candidate data only; decisions remain server-controlled downstream.
+It sees sanitized text, fails safe on every provider error, and never echoes
+credentials or case text through result or exception objects.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import re
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -35,92 +16,9 @@ from typing import Any, Callable
 import httpx
 
 from .credentials import CredentialError, LiveEndpoint, resolve_endpoint
+from .proxy import ENV_PROXY, _socks_supported, resolve_proxy
+from .response_parsing import _extract_json_object
 from .types import ModelConstraints, ModelRequest, RawModelResult
-
-# The provider may wrap JSON in a markdown fence even when asked not to, and some
-# models add a sentence of prose before it. Both are formatting quirks, not
-# compliance failures, so the JSON object is extracted rather than rejected. The
-# fence is matched anywhere in the message, not just as the whole message.
-_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
-
-
-def _extract_json_object(text: str) -> dict[str, Any] | None:
-    """Pull the first JSON object out of a model message.
-
-    Real models are inconsistent about output framing even at temperature 0: some
-    return a bare object, some wrap it in a markdown fence, and some prepend a
-    line of prose. Rejecting those would turn a formatting quirk into a
-    ``FAILED_SAFE`` case and send perfectly good checks to human review, so the
-    object is located explicitly.
-
-    Only *framing* is tolerated. Anything that is not a JSON object still fails,
-    and the caller still fails safe: this never guesses at content.
-    """
-    candidate = text.strip()
-
-    # 1. Already a bare object.
-    if candidate.startswith("{"):
-        try:
-            parsed = json.loads(candidate)
-        except json.JSONDecodeError:
-            parsed = None
-        if isinstance(parsed, dict):
-            return parsed
-
-    # 2. Fenced anywhere in the message.
-    for match in _FENCE_RE.finditer(candidate):
-        try:
-            parsed = json.loads(match.group(1))
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, dict):
-            return parsed
-
-    # 3. A top-level array is a contract violation, not a framing quirk. Digging
-    #    the first element out of it would invent an object the model never
-    #    asserted, so it is refused and the caller fails safe.
-    if candidate.startswith("["):
-        return None
-
-    # 4. Prose, then an object. Scan for the first balanced brace run, honouring
-    #    string literals and escapes so braces inside values do not confuse it.
-    start = candidate.find("{")
-    while start != -1:
-        # An object that is an element of an array is not the top-level result.
-        prefix = candidate[:start].rstrip()
-        if prefix.endswith("["):
-            start = candidate.find("{", start + 1)
-            continue
-        depth = 0
-        in_string = False
-        escaped = False
-        for index in range(start, len(candidate)):
-            char = candidate[index]
-            if in_string:
-                if escaped:
-                    escaped = False
-                elif char == "\\":
-                    escaped = True
-                elif char == '"':
-                    in_string = False
-                continue
-            if char == '"':
-                in_string = True
-            elif char == "{":
-                depth += 1
-            elif char == "}":
-                depth -= 1
-                if depth == 0:
-                    try:
-                        parsed = json.loads(candidate[start : index + 1])
-                    except json.JSONDecodeError:
-                        break
-                    if isinstance(parsed, dict):
-                        return parsed
-                    break
-        start = candidate.find("{", start + 1)
-
-    return None
 
 # v2 is extraction-only: the on/off-label conclusion moved to the server-side
 # closed-world comparison. v1 stays on disk so an older conclusion can be replayed
@@ -194,50 +92,6 @@ Rules for the fields:
   tool_permissions. They are server-controlled and would be discarded.
 - If you cannot comply, return exactly {"refused": true, "reason": "<why>"}.
 """
-
-
-ENV_PROXY = "COMPLIANCE_GUARD_LLM_PROXY"
-
-# Proxy schemes httpx can use without an extra dependency. A SOCKS proxy needs
-# the optional ``socksio`` package, so an inherited ``ALL_PROXY=socks5://...``
-# would otherwise turn every live call into an ImportError. Compliance checks
-# must not depend on an unrelated shell variable, so proxies are resolved
-# explicitly and unusable ones are ignored rather than crashing the call path.
-_USABLE_PROXY_SCHEMES = ("http://", "https://")
-
-
-def _socks_supported() -> bool:
-    try:
-        import socksio  # noqa: F401
-    except ImportError:
-        return False
-    return True
-
-
-def resolve_proxy() -> str | None:
-    """Pick a usable proxy for outbound model calls, or ``None`` for direct.
-
-    Precedence: an explicit application setting, then the conventional HTTPS/HTTP
-    proxy variables. ``ALL_PROXY`` is honoured only when it is a scheme httpx can
-    actually use in this environment.
-    """
-    explicit = os.environ.get(ENV_PROXY, "").strip()
-    if explicit:
-        return explicit or None
-
-    for name in ("https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY"):
-        value = os.environ.get(name, "").strip()
-        if value.startswith(_USABLE_PROXY_SCHEMES):
-            return value
-
-    for name in ("all_proxy", "ALL_PROXY"):
-        value = os.environ.get(name, "").strip()
-        if value.startswith(_USABLE_PROXY_SCHEMES):
-            return value
-        if value.startswith("socks") and _socks_supported():
-            return value
-
-    return None
 
 
 class LiveAdapterError(RuntimeError):
