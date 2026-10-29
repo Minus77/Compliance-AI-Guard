@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 import uuid
 from datetime import UTC, datetime
 from compliance_guard.audit.ledger import AuditLedger, AuditWriteError
@@ -43,6 +44,7 @@ class CheckService:
         self._orchestrator = orchestrator
         self._policy_store = policy_store
         self._ledger = ledger
+        self._lock = threading.RLock()
         self._records: dict[str, tuple[CheckRequest, CheckResult, CheckCaseResponse | None]] = {}
 
     @staticmethod
@@ -159,7 +161,8 @@ class CheckService:
             status=response.status.value,
         )
         self._record_result(response.case_id, response.trace_id, result)
-        self._records[response.case_id] = (request.model_copy(deep=True), result, response)
+        with self._lock:
+            self._records[response.case_id] = (request.model_copy(deep=True), result, response)
         return result
 
     def _record_result(
@@ -200,10 +203,11 @@ class CheckService:
         return self._orchestrator.run_check_case(request)
 
     def get(self, check_id: str, tenant_id: str) -> CheckResult:
-        record = self._records.get(check_id)
-        if record is None or record[0].tenant_id != tenant_id:
-            raise KeyError(check_id)
-        return record[1].model_copy(deep=True)
+        with self._lock:
+            record = self._records.get(check_id)
+            if record is None or record[0].tenant_id != tenant_id:
+                raise KeyError(check_id)
+            return record[1].model_copy(deep=True)
 
     def _case_request(self, request: CheckRequest) -> CheckCaseRequest:
         now = datetime.now(UTC)
