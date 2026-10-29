@@ -11,43 +11,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field
-
 from compliance_guard.domain.enums import RuleStatus
-from compliance_guard.domain.models import CharacterSpan, DomainModel, PolicyBundle
+from compliance_guard.domain.models import CharacterSpan, PolicyBundle
 from compliance_guard.runtime_paths import writable_data_dir
 
 from .bundles import PolicyRule, parse_bundle_rules
-
-
-class RuleTestFailure(DomainModel):
-    rule_id: str
-    case_index: int
-    message: str
-
-
-class RuleTestReport(DomainModel):
-    version: str
-    passed: bool
-    failures: list[RuleTestFailure] = Field(default_factory=list)
-
-
-class RuleVersion(DomainModel):
-    version: str
-    status: RuleStatus
-    rules: dict[str, PolicyRule]
-    created_at: datetime
-    published_at: datetime | None = None
-    market: str = "GLOBAL"
-    product_id: str | None = None
-    channel: str | None = None
-    effective_from: datetime | None = None
-    effective_until: datetime | None = None
-    source_version: str = ""
-    last_test_passed: bool = False
-    published_by: str | None = None
-
-    model_config = DomainModel.model_config | {"frozen": True}
+from .publishing_contracts import RuleTestFailure, RuleTestReport, RuleVersion
 
 
 def _default_store_path() -> Path:
