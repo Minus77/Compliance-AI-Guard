@@ -8,6 +8,7 @@ the queue itself never changes a decision - overrides belong to
 
 from __future__ import annotations
 
+import threading
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -51,6 +52,11 @@ class ReviewQueue:
         self._metrics = metrics
         self._now = now
         self._tasks: list[ReviewTask] = []
+        self._lock = threading.RLock()
+
+    @property
+    def lock(self) -> threading.RLock:
+        return self._lock
 
     def _clock(self) -> datetime:
         return self._now() if self._now is not None else datetime.now(UTC)
@@ -64,64 +70,69 @@ class ReviewQueue:
         market=None,
     ) -> ReviewTask | None:
         """Create review tasks from a policy plan; returns the first task."""
-        now = self._clock()
-        created: list[ReviewTask] = []
-        deadline = now + _SLA_TIMEDELTA.get(plan.sla_label, timedelta(hours=72))
-        for template in plan.review_tasks:
-            task = ReviewTask(
-                task_id=template.task_id,
-                case_id=template.case_id,
-                trace_id=template.trace_id,
-                required_role=template.required_role,
-                finding_ids=list(template.finding_ids),
-                severity=case_severity,
-                sla_label=plan.sla_label or "72h",
-                sla_deadline=deadline,
-                market=market or "CN",
-                system_decision=case_decision,
-                created_at=now,
-            )
-            self._tasks.append(task)
-            if self._ledger is not None:
-                self._ledger.append(
-                    AuditEvent(
-                        event_id=f"audit-{uuid.uuid4().hex}",
-                        case_id=task.case_id,
-                        trace_id=task.trace_id,
-                        event_type="review_task_created",
-                        occurred_at=now,
-                        payload={
-                            "task_id": task.task_id,
-                            "required_role": task.required_role.value,
-                            "sla_label": task.sla_label,
-                            "severity": task.severity.value if task.severity else None,
-                            "market": task.market,
-                        },
-                    )
+        with self._lock:
+            now = self._clock()
+            created: list[ReviewTask] = []
+            deadline = now + _SLA_TIMEDELTA.get(plan.sla_label, timedelta(hours=72))
+            for template in plan.review_tasks:
+                task = ReviewTask(
+                    task_id=template.task_id,
+                    case_id=template.case_id,
+                    trace_id=template.trace_id,
+                    required_role=template.required_role,
+                    finding_ids=list(template.finding_ids),
+                    severity=case_severity,
+                    sla_label=plan.sla_label or "72h",
+                    sla_deadline=deadline,
+                    market=market or "CN",
+                    system_decision=case_decision,
+                    created_at=now,
                 )
-            if self._metrics is not None:
-                self._metrics.increment("review_tasks_created")
-            created.append(task)
+                self._tasks.append(task)
+                if self._ledger is not None:
+                    self._ledger.append(
+                        AuditEvent(
+                            event_id=f"audit-{uuid.uuid4().hex}",
+                            case_id=task.case_id,
+                            trace_id=task.trace_id,
+                            event_type="review_task_created",
+                            occurred_at=now,
+                            payload={
+                                "task_id": task.task_id,
+                                "required_role": task.required_role.value,
+                                "sla_label": task.sla_label,
+                                "severity": task.severity.value if task.severity else None,
+                                "market": task.market,
+                            },
+                        )
+                    )
+                if self._metrics is not None:
+                    self._metrics.increment("review_tasks_created")
+                created.append(task)
         return created[0] if created else None
 
     def get(self, task_id: str) -> ReviewTask | None:
-        for task in self._tasks:
-            if task.task_id == task_id:
-                return task
-        return None
+        with self._lock:
+            for task in self._tasks:
+                if task.task_id == task_id:
+                    return task
+            return None
 
     def for_case(self, case_id: str) -> list[ReviewTask]:
-        tasks = [task for task in self._tasks if task.case_id == case_id]
-        return sorted(tasks, key=self._sort_key)
+        with self._lock:
+            tasks = [task for task in self._tasks if task.case_id == case_id]
+            return sorted(tasks, key=self._sort_key)
 
     def pending(self) -> list[ReviewTask]:
-        return sorted(
-            (task for task in self._tasks if task.status is ReviewTaskStatus.PENDING),
-            key=self._sort_key,
-        )
+        with self._lock:
+            return sorted(
+                (task for task in self._tasks if task.status is ReviewTaskStatus.PENDING),
+                key=self._sort_key,
+            )
 
     def all(self) -> list[ReviewTask]:
-        return list(self._tasks)
+        with self._lock:
+            return list(self._tasks)
 
     @staticmethod
     def _sort_key(task: ReviewTask):

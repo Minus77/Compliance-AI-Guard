@@ -6,6 +6,9 @@ approved) is rejected at the service layer so a dangerous false allow cannot
 be recorded by an override. Non-S0/S1 tasks keep the full override range.
 """
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from compliance_guard.domain.enums import Decision, Role, Severity
@@ -63,3 +66,51 @@ def test_non_s0_s1_task_can_still_be_allowed_by_override(app_services, reviewer_
     assert task is not None
     record = app_services.decisions.record(task.task_id, "accepted", "low-risk case cleared", reviewer_actor)
     assert record.after_decision == Decision.ALLOW.value
+
+
+def test_concurrent_review_decisions_create_one_signed_record(
+    app_services, reviewer_actor
+):
+    plan = ReviewPlan(
+        review_tasks=[
+            ReviewTask(
+                task_id="review-concurrent",
+                case_id="case-concurrent",
+                trace_id="trace-concurrent",
+                required_role=Role.REVIEWER,
+                finding_ids=[],
+            )
+        ],
+        required_roles=[Role.REVIEWER],
+        sla_label="72h",
+        next_actions=[],
+        routing_basis="concurrent review guard",
+    )
+    task = app_services.review_queue.create(plan, case_severity=Severity.S3)
+    workers = 8
+    start = threading.Barrier(workers)
+
+    def decide(decision: str) -> str:
+        start.wait()
+        try:
+            app_services.decisions.record(
+                task.task_id, decision, "concurrent review", reviewer_actor
+            )
+            return "recorded"
+        except ValueError as error:
+            assert "already completed" in str(error)
+            return "rejected"
+
+    decisions = ("accepted", "rejected") * (workers // 2)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        outcomes = list(pool.map(decide, decisions))
+
+    assert outcomes.count("recorded") == 1
+    assert outcomes.count("rejected") == workers - 1
+    overrides = [
+        event
+        for event in app_services.ledger.for_case(task.case_id)
+        if event.event_type == "review_override"
+    ]
+    assert len(overrides) == 1
+    assert app_services.metrics.snapshot().counters["review_outcomes.total"] == 1
