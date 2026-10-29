@@ -112,6 +112,11 @@ class ReviewQueue:
         return created[0] if created else None
 
     def get(self, task_id: str) -> ReviewTask | None:
+        task = self._get_mutable(task_id)
+        return task.model_copy(deep=True) if task is not None else None
+
+    def _get_mutable(self, task_id: str) -> ReviewTask | None:
+        """Internal lookup for decisions made while holding :attr:`lock`."""
         with self._lock:
             for task in self._tasks:
                 if task.task_id == task_id:
@@ -121,18 +126,24 @@ class ReviewQueue:
     def for_case(self, case_id: str) -> list[ReviewTask]:
         with self._lock:
             tasks = [task for task in self._tasks if task.case_id == case_id]
-            return sorted(tasks, key=self._sort_key)
+            return sorted(
+                (task.model_copy(deep=True) for task in tasks), key=self._sort_key
+            )
 
     def pending(self) -> list[ReviewTask]:
         with self._lock:
             return sorted(
-                (task for task in self._tasks if task.status is ReviewTaskStatus.PENDING),
+                (
+                    task.model_copy(deep=True)
+                    for task in self._tasks
+                    if task.status is ReviewTaskStatus.PENDING
+                ),
                 key=self._sort_key,
             )
 
     def all(self) -> list[ReviewTask]:
         with self._lock:
-            return list(self._tasks)
+            return [task.model_copy(deep=True) for task in self._tasks]
 
     @staticmethod
     def _sort_key(task: ReviewTask):

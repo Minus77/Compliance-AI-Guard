@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from compliance_guard.domain.enums import Decision, Role, Severity
+from compliance_guard.domain.enums import Decision, ReviewTaskStatus, Role, Severity
 from compliance_guard.domain.models import ReviewTask
 from compliance_guard.policy.routing import ReviewPlan
 
@@ -66,6 +66,18 @@ def test_non_s0_s1_task_can_still_be_allowed_by_override(app_services, reviewer_
     assert task is not None
     record = app_services.decisions.record(task.task_id, "accepted", "low-risk case cleared", reviewer_actor)
     assert record.after_decision == Decision.ALLOW.value
+
+
+def test_reading_a_review_task_cannot_change_its_status(
+    app_services, sample_request, reviewer_actor
+):
+    response = app_services.orchestrator.run_check_case(sample_request("redline"))
+    task = app_services.review_queue.for_case(response.case_id)[0]
+    task.status = ReviewTaskStatus.COMPLETED
+
+    assert app_services.review_queue.get(task.task_id).status is ReviewTaskStatus.PENDING
+    app_services.decisions.record(task.task_id, "rejected", "verified", reviewer_actor)
+    assert app_services.review_queue.get(task.task_id).status is ReviewTaskStatus.COMPLETED
 
 
 def test_concurrent_review_decisions_create_one_signed_record(

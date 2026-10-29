@@ -38,7 +38,7 @@ class DecisionService:
         if self._queue is None:
             raise RuntimeError("DecisionService requires a ReviewQueue")
         with self._queue.lock:
-            task = self._queue.get(task_id)
+            task = self._queue._get_mutable(task_id)
             if task is None:
                 raise KeyError(f"unknown review task {task_id!r}")
             if task.status is ReviewTaskStatus.COMPLETED:
