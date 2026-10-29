@@ -85,7 +85,8 @@ class ConversationStore:
             allowed_constraints=dict(allowed_constraints or {}),
             expires_at=self._now() + self._lifetime,
         )
-        self._sessions[session.conversation_id] = session
+        with self._lock:
+            self._sessions[session.conversation_id] = session
         return session.model_copy(deep=True)
 
     def get(
@@ -95,12 +96,13 @@ class ConversationStore:
         actor_id: str,
         rule_version: str,
     ) -> ConversationSession:
-        return self._active_session(
-            conversation_id,
-            tenant_id,
-            actor_id,
-            rule_version,
-        ).model_copy(deep=True)
+        with self._lock:
+            return self._active_session(
+                conversation_id,
+                tenant_id,
+                actor_id,
+                rule_version,
+            ).model_copy(deep=True)
 
     def consume(
         self,
