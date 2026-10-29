@@ -36,13 +36,9 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import Field
-
 from compliance_guard.domain.enums import DECISION_RANK, Decision, Entrypoint
 from compliance_guard.domain.models import (
     CaseContext,
-    CharacterSpan,
-    DomainModel,
     ExtractedData,
 )
 from compliance_guard.knowledge.evidence_pack import EvidencePack
@@ -51,6 +47,11 @@ from compliance_guard.knowledge.glossary import DEFAULT_LOCALE, Glossary, defaul
 from compliance_guard.policy.engine import PolicyEngine
 from compliance_guard.security.injection_scan import scan_untrusted_content
 from compliance_guard.security.pii_gateway import PiiGateway, SanitizeContext
+from compliance_guard.workflow.precheck_contracts import (
+    L1_BUDGET_MS,
+    PrecheckFinding,
+    PrecheckResult,
+)
 
 # Keys a client must never be able to set, because each one names part of the
 # verdict. Mirrors the submit path's reserved list so the two entry points cannot
@@ -62,61 +63,6 @@ _RESERVED_CLAIM_KEYS = frozenset(
 # Rules about retrieval state rather than about the text being written. See the
 # module docstring: surfacing these during typing creates an uncleanable warning.
 _EVIDENCE_RULES = frozenset({"CN-010", "CN-011", "CN-012", "CN-013"})
-
-# Budget from the three-tier latency design: L1 must stay clear of the point
-# where a hint stops feeling like part of typing.
-L1_BUDGET_MS = 300
-
-
-class PrecheckFinding(DomainModel):
-    """One pre-check finding, already phrased for a reader."""
-
-    type: str
-    severity: str
-    decision: str
-    rule_id: str | None = None
-    matched_terms: list[str] = Field(default_factory=list)
-    spans: list[CharacterSpan] = Field(default_factory=list)
-    rule_version: str = ""
-    category: str = ""
-    allow_save: bool = True
-    allow_generate: bool = True
-    allow_publish: bool = True
-    notification_message: str = ""
-    remediation_guidance: str = ""
-    # The three-sentence card. Plain language is the point, so these are filled
-    # from the glossary rather than from an internal reason string.
-    title: str = ""
-    why: str = ""
-    what_to_do: str = ""
-    term_label: str = ""
-    term_plain: str = ""
-
-
-class PrecheckResult(DomainModel):
-    """Outcome of one deterministic pre-check pass."""
-
-    layer: str = "L1"
-    model_called: bool = False
-    decision: str = Decision.ALLOW.value
-    decision_label: str = ""
-    decision_plain: str = ""
-    next_step: str = ""
-    findings: list[PrecheckFinding] = Field(default_factory=list)
-    masked_text: str = ""
-    masked_count: int = 0
-    ambiguous_entities: bool = False
-    resolved_fields: dict[str, Any] = Field(default_factory=dict)
-    claimed_fields: dict[str, Any] = Field(default_factory=dict)
-    discrepancies: list[str] = Field(default_factory=list)
-    policy_version: str = ""
-    content_version: str = ""
-    spans_stale: bool = False
-    glossary_version: str = ""
-    elapsed_ms: float = 0.0
-    within_budget: bool = True
-    budget_ms: int = L1_BUDGET_MS
-
 
 class PrecheckService:
     """Runs the deterministic layers against draft text, without a model."""
