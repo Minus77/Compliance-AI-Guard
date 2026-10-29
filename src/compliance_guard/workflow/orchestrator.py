@@ -27,8 +27,6 @@ from compliance_guard.agents.classifier import classify_task
 from compliance_guard.agents.evaluator import evaluate_with_evidence
 from compliance_guard.agents.explainer import explain_policy_result
 from compliance_guard.agents.extractor import ExtractorAgent
-from compliance_guard.agents.icsr_assessment import assess_icsr
-from compliance_guard.agents.icsr_followup import build_followup_form
 from compliance_guard.agents.rewrite import RewriteService
 from compliance_guard.audit.ledger import AuditWriteError
 from compliance_guard.domain.enums import (
@@ -45,7 +43,6 @@ from compliance_guard.domain.models import (
     CheckCaseRequest,
     CheckCaseResponse,
     DomainModel,
-    Entity,
     ExtractedData,
     Finding,
     KnowledgeFilter,
@@ -54,28 +51,14 @@ from compliance_guard.domain.models import (
 )
 from compliance_guard.knowledge.evidence_pack import EvidencePack
 from compliance_guard.knowledge.field_resolver import FieldResolution, FieldResolver
-from compliance_guard.knowledge.glossary import DEFAULT_LOCALE, default_glossary
 from compliance_guard.llm.types import ModelConstraints, RawModelResult
 from compliance_guard.policy.engine import PolicyEngine, PolicyResult
 from compliance_guard.policy.routing import ReviewPlan
 from compliance_guard.security.injection_scan import scan_untrusted_content
 from compliance_guard.security.pii_gateway import KnownIdentifier, PiiGateway, SanitizeContext
+from compliance_guard.workflow import orchestrator_support as support
 from compliance_guard.workflow.scenario import infer_scenario
 from compliance_guard.workflow.state_machine import StateMachine, TransitionContext
-
-# Per-excerpt character ceiling for evidence sent to a model. Keeps one oversized
-# record from crowding out the rest of the pack or exhausting the token budget.
-_MAX_EVIDENCE_EXCERPT_CHARS = 600
-
-_RESERVED_FORM_KEYS = frozenset(
-    {
-        "decision",
-        "severity",
-        "approval_status",
-        "routing",
-        "tool_permissions",
-    }
-)
 
 _OUTCOME_EVENTS = {
     Decision.ALLOW: WorkflowEvent.ALLOW,
@@ -148,83 +131,19 @@ class Orchestrator:
 
     @staticmethod
     def _digest(text: str) -> str:
-        return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+        return support.digest(text)
 
     @staticmethod
     def _data_class(security_findings: list[Any], request: Any | None = None) -> str:
-        types = {finding.type.casefold() for finding in security_findings}
-        if any("phi" in finding_type for finding_type in types):
-            return "phi_tokenized"
-        if any("pii" in finding_type for finding_type in types):
-            return "pii_tokenized"
-        # An image/audio attachment is never opened server-side, so its contents
-        # are unknown and may carry personal data (a photographed chart, a
-        # recorded patient name). Classify conservatively as tokenized rather
-        # than 'internal': the multimodal route deliberately refuses untokenized
-        # data classes, so calling this 'internal' would fail every attachment
-        # case safe instead of routing it.
-        for part in getattr(request, "content_parts", None) or []:
-            part_type = getattr(part, "type", None)
-            value = getattr(part_type, "value", part_type)
-            if value in {"image_ref", "audio_ref"}:
-                return "pii_tokenized"
-        return "internal"
-
-    # The fields that travel to a model as reference context. Deliberately short
-    # values only: contraindication and warning prose stays server-side, so the
-    # request size is decoupled from label length and product count.
-    _LABEL_FACT_FIELDS = (
-        "product_id",
-        "market",
-        "version",
-        "indication",
-        "indication_id",
-        "population",
-        "line",
-        "dose",
-        "route",
-        "duration",
-        "combination",
-    )
+        return support.data_class(security_findings, request)
 
     @classmethod
     def _label_fact_fields(cls, label_facts: Any) -> dict[str, Any]:
-        """One product's approved label as structured values, or an empty dict."""
-        if label_facts is None:
-            return {}
-        selected: dict[str, Any] = {}
-        for field in cls._LABEL_FACT_FIELDS:
-            value = getattr(label_facts, field, None)
-            if value not in (None, ""):
-                selected[field] = value
-        return selected
+        return support.label_fact_fields(label_facts)
 
     @staticmethod
     def _roster(request: Any) -> list[KnownIdentifier]:
-        """Master-data subjects whose raw identifiers may appear in the content.
-
-        Client-supplied roster entries are accepted here for one reason only:
-        they can add masking coverage and stable identity for people the local
-        detector would otherwise only guess at. They cannot reduce masking — the
-        gateway still runs its own detection — and they never reach the policy
-        decision, so a forged roster cannot make a case look compliant.
-        """
-        raw = request.extensions.get("known_identifiers") or []
-        roster: list[KnownIdentifier] = []
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            entity_type = str(item.get("entity_type") or item.get("type") or "").strip()
-            canonical_id = str(item.get("canonical_id") or "").strip()
-            values = [str(value) for value in (item.get("values") or []) if str(value).strip()]
-            if entity_type not in {"patient", "hcp"} or not canonical_id or not values:
-                continue
-            roster.append(
-                KnownIdentifier(entity_type=entity_type, canonical_id=canonical_id, values=values)
-            )
-        return roster
-
-    # -- audit / trace helpers -------------------------------------------------
+        return support.roster(request)
 
     def _record(
         self,
@@ -677,39 +596,7 @@ class Orchestrator:
 
     @staticmethod
     def _evidence_excerpts(evidence_pack: EvidencePack) -> list[dict[str, Any]]:
-        """Build the evidence the model is allowed to reason from.
-
-        Only curated knowledge-base content travels here: the approved excerpt,
-        its id and version, and the retrieval stance. Sending bare ids asked the
-        model to reason from facts it could not see, and a live model correctly
-        refused the task rather than guessing -- which then surfaced as a case
-        with no candidate findings.
-
-        Stance is included because "supporting" and "contradicting" evidence must
-        not look alike to the model. The excerpt is truncated so one oversized
-        record cannot crowd out the rest of the pack or blow the token budget.
-        """
-        stance_by_id: dict[str, str] = {}
-        for item in evidence_pack.supporting:
-            stance_by_id[item.evidence_id] = "supports"
-        for item in evidence_pack.contradictions:
-            stance_by_id[item.evidence_id] = "contradicts"
-
-        excerpts: list[dict[str, Any]] = []
-        for item in evidence_pack.items:
-            quote = (item.quote or "").strip()
-            if not quote:
-                continue
-            excerpts.append(
-                {
-                    "evidence_id": item.evidence_id,
-                    "version": item.version,
-                    "source_type": item.source_type,
-                    "stance": stance_by_id.get(item.evidence_id, "retrieved"),
-                    "excerpt": quote[:_MAX_EVIDENCE_EXCERPT_CHARS],
-                }
-            )
-        return excerpts
+        return support.evidence_excerpts(evidence_pack)
 
     def _overlay_intake(
         self,
@@ -718,38 +605,7 @@ class Orchestrator:
         *,
         field_resolution: FieldResolution | None = None,
     ) -> ExtractedData:
-        """Separate what the client claimed from what the server established.
-
-        The previous implementation merged client form fields over the server's
-        own extraction, which made the client the authority on off-label status:
-        declaring ``indication_id=IND-001`` removed the off-label finding from a
-        narrative promoting a different disease (defect P-1). Claims now stay in
-        their own compartment and the decision reads ``resolved_fields``.
-        """
-        form_fields = request.extensions.get("structured_fields") or {}
-        claimed_fields = {
-            key: value
-            for key, value in form_fields.items()
-            if key.casefold() not in _RESERVED_FORM_KEYS
-        }
-        form_entities = [
-            Entity(type=str(item.get("type", "entity")), token=str(item.get("token", "")))
-            for item in (request.extensions.get("entities") or [])
-            if isinstance(item, dict)
-        ]
-        resolved_fields = dict(field_resolution.resolved_fields) if field_resolution else {}
-        discrepancies = list(field_resolution.discrepancies) if field_resolution else []
-        return ExtractedData(
-            entities=list(extracted.entities) + form_entities,
-            findings=extracted.findings,
-            extracted_fields=dict(extracted.extracted_fields),
-            claimed_fields=claimed_fields,
-            resolved_fields=resolved_fields,
-            field_discrepancies=discrepancies,
-            evidence_refs=list(extracted.evidence_refs),
-            missing_information=list(extracted.missing_information),
-            confidence=extracted.confidence,
-        )
+        return support.overlay_intake(extracted, request, field_resolution=field_resolution)
 
     def _enqueue_review(self, case_id: str, trace_id: str, policy_result: PolicyResult, market: str) -> None:
         if self._review_queue is None or policy_result.routing is None:
@@ -885,55 +741,11 @@ class Orchestrator:
 
     @staticmethod
     def _map_finding(finding: Any) -> Finding:
-        return Finding(
-            finding_id=finding.finding_id,
-            type=finding.type,
-            severity=finding.severity,
-            decision=finding.decision,
-            confidence=finding.confidence,
-            reason=finding.reason,
-            evidence_refs=list(finding.evidence_refs),
-            missing_information=list(finding.missing_information),
-            required_role=finding.required_role,
-            next_action=finding.next_action,
-            evidence_gap=finding.evidence_gap,
-            # Rule provenance for the UI's natural-language explanation.
-            rule_id=getattr(finding, "rule_id", None) or None,
-            matched_terms=list(getattr(finding, "matched_terms", []) or []),
-            sla_label=getattr(finding, "sla_label", None),
-            required_roles=list(getattr(finding, "required_roles", []) or []),
-            spans=list(getattr(finding, "spans", []) or []),
-            rule_version=getattr(finding, "rule_version", ""),
-            category=getattr(finding, "category", ""),
-            allow_save=getattr(finding, "allow_save", True),
-            allow_generate=getattr(finding, "allow_generate", True),
-            allow_publish=getattr(finding, "allow_publish", True),
-            notification_message=getattr(finding, "notification_message", ""),
-            remediation_guidance=getattr(finding, "remediation_guidance", ""),
-        )
+        return support.map_finding(finding)
 
     @staticmethod
     def _normalize_finding_gaps(findings: list[Finding]) -> list[Finding]:
-        """Conservatively mark high-risk findings without evidence as a gap.
-
-        The response invariant requires every S0/S1 finding to carry
-        evidence references or an explicit evidence gap. The policy engine
-        already attaches refs/gaps for evidence-required rules; for S0/S1
-        outcomes where evidence is not applicable (e.g. injection) the
-        response composition records a conservative evidence gap so the
-        domain safety invariant remains satisfied without weakening it.
-        """
-        high_risk = {Severity.S0, Severity.S1}
-        for finding in findings:
-            if finding.severity in high_risk and not finding.evidence_refs:
-                has_gap = finding.evidence_gap or "evidence_gap" in (
-                    item.lower() for item in finding.missing_information
-                )
-                if not has_gap:
-                    finding.evidence_gap = True
-                    if "evidence_gap" not in finding.missing_information:
-                        finding.missing_information.append("evidence_gap")
-        return findings
+        return support.normalize_finding_gaps(findings)
 
     def _build_response(
         self,
@@ -950,52 +762,23 @@ class Orchestrator:
         raw: RawModelResult | None = None,
         rewrite: Any | None = None,
     ) -> CheckCaseResponse:
-        findings = self._normalize_finding_gaps([self._map_finding(f) for f in policy_result.findings])
-        evidence = [item.model_copy(deep=True) for item in evidence_pack.items]
-        icsr_payload = self._icsr_payload(request, evidence_pack, candidate, findings)
-        guidance_payload = self._guidance_payload(
-            request, policy_result, findings, rewrite=rewrite
-        )
-        response = CheckCaseResponse(
+        return support.build_response(
+            request,
             case_id=case_id,
-            decision=policy_result.decision,
-            status=state,
-            market=request.market,
-            language=request.language,
-            product=ProductContext(
-                product_id=request.product_id,
-                label_version=self._label_version(request, evidence_pack),
-            ),
-            entities=list(candidate.entities),
-            findings=findings,
-            evidence=evidence,
-            security_findings=[finding.model_copy(deep=True) for finding in security_findings],
-            policy_version=policy_result.policy_version,
-            knowledge_snapshot_id=evidence_pack.snapshot_id,
-            # Provenance follows the answering profile; see _record_finalized.
-            model_profile_id=(raw.profile_id if raw is not None and raw.profile_id else route.primary_profile.profile_id),
-            model_version=(raw.model_id if raw is not None and raw.model_id else route.primary_profile.model_id),
-            route_version=route.route_version,
-            prompt_version=self._prompt_version,
             trace_id=trace_id,
             audit_event_id=audit_event_id,
-            retrieval={
-                "query": evidence_pack.query,
-                "query_tokens": list(evidence_pack.query_tokens),
-                "filters_applied": dict(evidence_pack.filters_applied),
-                "snapshot_id": evidence_pack.snapshot_id,
-                "stages": [stage.model_dump(mode="json") for stage in evidence_pack.stages],
-                "chunks": [chunk.model_dump(mode="json") for chunk in evidence_pack.chunks],
-                "gaps": [gap.model_dump(mode="json") for gap in evidence_pack.gaps],
-                "supporting_count": len(evidence_pack.supporting),
-                "contradiction_count": len(evidence_pack.contradictions),
-                "evidence_gap": evidence_pack.evidence_gap,
-            },
-            icsr=icsr_payload,
-            guidance=guidance_payload,
-            followup=build_followup_form(icsr_payload).model_dump(mode="json"),
+            state=state,
+            policy_result=policy_result,
+            evidence_pack=evidence_pack,
+            candidate=candidate,
+            route=route,
+            security_findings=security_findings,
+            label_version=self._label_version(request, evidence_pack),
+            prompt_version=self._prompt_version,
+            raw=raw,
+            rewrite=rewrite,
+            rewrite_service=self._rewrite,
         )
-        return response
 
     def _guidance_payload(
         self,
@@ -1004,66 +787,13 @@ class Orchestrator:
         findings: list[Finding],
         rewrite: Any | None = None,
     ) -> dict[str, Any]:
-        """Plain-language reading of the result, plus the codes for the record.
-
-        Two audiences, one response. A representative needs to know what happened
-        and what to do; a reviewer reconciling the case needs the exact rule ids.
-        Splitting them means neither has to read around the other, and the reader
-        never meets a bare ``S1``.
-
-        Wording comes from the glossary rather than from rule strings, so the
-        pre-check panel, this result and the glossary endpoint cannot drift apart.
-        """
-        locale = DEFAULT_LOCALE
-        if str(request.language or "").casefold().startswith("en"):
-            locale = "en"
-        glossary = default_glossary()
-
-        decision_card = glossary.explain_decision(policy_result.decision.value, locale)
-        cards: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        for finding in findings:
-            if finding.type in seen:
-                continue
-            seen.add(finding.type)
-            card = glossary.explain_finding(finding.type, locale, rule_id=finding.rule_id)
-            payload = card.model_dump(mode="json")
-            payload["type"] = finding.type
-            payload["severity_label"] = glossary.explain_severity(
-                finding.severity.value, locale
-            )["label"]
-            cards.append(payload)
-
-        # Computed in the main flow so its audit event lands before the terminal
-        # transition; recomputed here only if a caller built a response directly.
-        if rewrite is None:
-            rewrite = self._rewrite.suggest(
-                request.content, finding_types=[finding.type for finding in findings]
-            )
-
-        routing = policy_result.routing
-        review_roles = (
-            [role.value for role in getattr(routing, "required_roles", [])] if routing else []
+        return support.guidance_payload(
+            request,
+            policy_result,
+            findings,
+            rewrite=rewrite,
+            rewrite_service=self._rewrite,
         )
-        return {
-            "rewrite": rewrite.model_dump(mode="json"),
-            "locale": locale,
-            "glossary_version": glossary.version,
-            "decision_label": decision_card.label,
-            "decision_plain": decision_card.plain,
-            "next_step": decision_card.next_step,
-            "findings": cards,
-            "review_roles": review_roles,
-            "sla_label": getattr(routing, "sla_label", None) if routing else None,
-            # Kept for reconciliation, deliberately out of the headline.
-            "technical": {
-                "decision": policy_result.decision.value,
-                "severity": policy_result.severity.value,
-                "policy_version": policy_result.policy_version,
-                "rule_ids": [f.rule_id for f in findings if f.rule_id],
-                "finding_types": [f.type for f in findings],
-            },
-        }
 
     @staticmethod
     def _icsr_payload(
@@ -1072,40 +802,7 @@ class Orchestrator:
         candidate: ExtractedData,
         findings: list[Finding],
     ) -> dict[str, Any]:
-        """Assess ICSR minimum criteria on the tokenized narrative.
-
-        The tokenized query is used deliberately: the criteria ask whether an
-        identifiable patient/reporter exists, never that we hold identifiers.
-        """
-        safety_types = {
-            "potential_adverse_event",
-            "serious_adverse_event",
-            "ae",
-            "sae",
-        }
-        has_safety_finding = any(
-            str(finding.type).casefold() in safety_types for finding in findings
-        )
-        patient_entity = any(
-            str(getattr(entity, "type", "")).casefold() == "patient"
-            for entity in (candidate.entities or [])
-        )
-        assessment = assess_icsr(
-            evidence_pack.query or request.content,
-            received_at=request.received_at,
-            product_id=request.product_id,
-            # In an interaction note the submitting contributor is the reporter.
-            reporter_known=True,
-            patient_entity_present=patient_entity,
-        )
-        payload = assessment.model_dump(mode="json")
-        # Cross-check: a safety finding without a safety-relevant ICSR read is a
-        # discrepancy a PV reviewer must see rather than a silent disagreement.
-        payload["policy_flagged_safety"] = has_safety_finding
-        payload["assessment_conflict"] = bool(
-            has_safety_finding and not assessment.is_safety_relevant
-        )
-        return payload
+        return support.icsr_payload(request, evidence_pack, candidate, findings)
 
     def _fail_safe(
         self,
