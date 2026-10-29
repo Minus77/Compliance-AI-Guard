@@ -23,6 +23,8 @@ matching the ledger's own rule that a later record must not obscure an earlier o
 from __future__ import annotations
 
 import json
+import os
+import threading
 import uuid
 from datetime import UTC, datetime
 from enum import Enum
@@ -103,30 +105,40 @@ class FeedbackStore:
         )
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._scanner = DlpScanner()
+        # shortcut: locking is process-local; add a file lock when multiple
+        # workers share the same candidate file.
+        self._lock = threading.RLock()
 
     @property
     def path(self) -> Path:
         return self._path
 
     def _append(self, entry: FeedbackEntry) -> None:
-        with self._path.open("a", encoding="utf-8") as handle:
-            handle.write(
-                json.dumps(entry.model_dump(mode="json"), ensure_ascii=False, sort_keys=True) + "\n"
-            )
+        with self._lock:
+            with self._path.open("a", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        entry.model_dump(mode="json"), ensure_ascii=False, sort_keys=True
+                    )
+                    + "\n"
+                )
+                handle.flush()
+                os.fsync(handle.fileno())
 
     def _rows(self) -> list[FeedbackEntry]:
-        if not self._path.is_file():
-            return []
-        entries: list[FeedbackEntry] = []
-        for line in self._path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entries.append(FeedbackEntry(**json.loads(line)))
-            except (json.JSONDecodeError, TypeError, ValueError):
-                continue
-        return entries
+        with self._lock:
+            if not self._path.is_file():
+                return []
+            entries: list[FeedbackEntry] = []
+            for line in self._path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(FeedbackEntry(**json.loads(line)))
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    continue
+            return entries
 
     def _latest(self) -> dict[str, FeedbackEntry]:
         """Newest state per entry id, since confirmation appends rather than edits."""
@@ -177,30 +189,37 @@ class FeedbackStore:
         Requires a different person than the reporter: a regression case changes
         the release gate, so it takes two people to move one in.
         """
-        current = self._latest().get(entry_id)
-        if current is None:
-            raise KeyError(f"unknown feedback entry {entry_id!r}")
-        if current.status == "confirmed":
-            return current
-        if actor.actor_id == current.reported_by:
-            raise PermissionError(
-                "a regression candidate must be confirmed by someone other than its reporter"
+        with self._lock:
+            current = self._latest().get(entry_id)
+            if current is None:
+                raise KeyError(f"unknown feedback entry {entry_id!r}")
+            if current.status == "confirmed":
+                return current
+            if actor.actor_id == current.reported_by:
+                raise PermissionError(
+                    "a regression candidate must be confirmed by someone other than its reporter"
+                )
+            confirmed = current.model_copy(
+                update={
+                    "status": "confirmed",
+                    "confirmed_by": actor.actor_id,
+                    "confirmed_at": datetime.now(UTC),
+                }
             )
-        confirmed = current.model_copy(
-            update={
-                "status": "confirmed",
-                "confirmed_by": actor.actor_id,
-                "confirmed_at": datetime.now(UTC),
-            }
-        )
-        self._append(confirmed)
-        return confirmed
+            self._append(confirmed)
+            return confirmed
 
     def pending(self) -> list[FeedbackEntry]:
-        return [entry for entry in self._latest().values() if entry.status == "candidate"]
+        with self._lock:
+            return [
+                entry for entry in self._latest().values() if entry.status == "candidate"
+            ]
 
     def confirmed(self) -> list[FeedbackEntry]:
-        return [entry for entry in self._latest().values() if entry.status == "confirmed"]
+        with self._lock:
+            return [
+                entry for entry in self._latest().values() if entry.status == "confirmed"
+            ]
 
     def exportable(self) -> list[dict[str, Any]]:
         """Confirmed candidates, shaped as golden-set rows."""
@@ -213,19 +232,20 @@ class FeedbackStore:
         working around the tool, so it belongs next to the safety numbers rather
         than in a separate report.
         """
-        latest = list(self._latest().values())
-        return {
-            "total": len(latest),
-            "pending": sum(1 for entry in latest if entry.status == "candidate"),
-            "confirmed": sum(1 for entry in latest if entry.status == "confirmed"),
-            "false_positive": sum(
-                1 for entry in latest if entry.kind is FeedbackKind.FALSE_POSITIVE
-            ),
-            "false_negative": sum(
-                1 for entry in latest if entry.kind is FeedbackKind.FALSE_NEGATIVE
-            ),
-            "path": str(self._path),
-        }
+        with self._lock:
+            latest = list(self._latest().values())
+            return {
+                "total": len(latest),
+                "pending": sum(1 for entry in latest if entry.status == "candidate"),
+                "confirmed": sum(1 for entry in latest if entry.status == "confirmed"),
+                "false_positive": sum(
+                    1 for entry in latest if entry.kind is FeedbackKind.FALSE_POSITIVE
+                ),
+                "false_negative": sum(
+                    1 for entry in latest if entry.kind is FeedbackKind.FALSE_NEGATIVE
+                ),
+                "path": str(self._path),
+            }
 
 
 __all__ = ["FeedbackEntry", "FeedbackKind", "FeedbackStore"]

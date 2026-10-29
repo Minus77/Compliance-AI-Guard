@@ -17,6 +17,8 @@ Three constraints shape the design:
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -146,6 +148,35 @@ def test_second_person_can_confirm(store):
     confirmed = store.confirm(entry.entry_id, actor=_actor(actor_id="user-b"))
     assert confirmed.status == "confirmed"
     assert confirmed.confirmed_by == "user-b"
+
+
+def test_concurrent_confirmation_appends_once(store):
+    entry = store.record(
+        case_id="CASE-CONCURRENT",
+        kind=FeedbackKind.FALSE_POSITIVE,
+        reason="误判",
+        actor=_actor(actor_id="user-a"),
+        masked_text="常规内容",
+        observed_decision="blocked",
+        observed_findings=[],
+    )
+    workers = 8
+    start = threading.Barrier(workers)
+
+    def confirm(_):
+        start.wait()
+        return store.confirm(entry.entry_id, actor=_actor(actor_id="user-b"))
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        confirmed = list(pool.map(confirm, range(workers)))
+
+    assert {item.status for item in confirmed} == {"confirmed"}
+    rows = [
+        json.loads(line)
+        for line in store.path.read_text(encoding="utf-8").strip().splitlines()
+    ]
+    assert len(rows) == 2
+    assert [row["status"] for row in rows] == ["candidate", "confirmed"]
 
 
 def test_confirmation_does_not_overwrite_the_original_entry(store):
