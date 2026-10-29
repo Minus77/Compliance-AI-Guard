@@ -13,6 +13,9 @@ of quietly reporting a comfortable number.
 
 from __future__ import annotations
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
 from compliance_guard.audit.metrics import Metrics, OversightSummary
 
 
@@ -89,3 +92,23 @@ def test_counters_are_exposed_in_the_snapshot_for_the_dashboard():
 
 def test_summary_is_a_typed_model():
     assert isinstance(Metrics().oversight_summary(), OversightSummary)
+
+
+def test_concurrent_updates_are_not_lost():
+    metrics = Metrics()
+    workers = 8
+    per_worker = 100
+    start = threading.Barrier(workers)
+
+    def record(_):
+        start.wait()
+        for _ in range(per_worker):
+            metrics.increment("requests")
+            metrics.record_review_outcome(overridden=False)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(record, range(workers)))
+
+    counters = metrics.snapshot().counters
+    assert counters["requests"] == workers * per_worker
+    assert counters["review_outcomes.total"] == workers * per_worker

@@ -8,6 +8,7 @@ store can never grow without limit.
 
 from __future__ import annotations
 
+import threading
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -99,51 +100,61 @@ class Metrics:
         self._counters: dict[str, int] = defaultdict(int)
         self._gauges: dict[str, float] = {}
         self._snapshots: list[MetricsSnapshot] = []
+        self._lock = threading.RLock()
 
     def increment(self, name: str, amount: int = 1) -> None:
         if amount < 0:
             raise ValueError("increment amount must be non-negative")
-        self._counters[name] += amount
+        with self._lock:
+            self._counters[name] += amount
 
     def gauge(self, name: str, value: float) -> None:
-        self._gauges[name] = float(value)
+        with self._lock:
+            self._gauges[name] = float(value)
 
     def record(self, name: str, value: float) -> None:
         """Record one numeric observation as a gauge (e.g. latency ms)."""
-        self._gauges[name] = float(value)
+        with self._lock:
+            self._gauges[name] = float(value)
 
     def snapshot(self, *, bounded: bool = True) -> MetricsSnapshot:
-        counters = dict(self._counters)
-        if bounded and len(counters) > _MAX_SNAPSHOT_KEYS:
-            counters = dict(
-                sorted(counters.items(), key=lambda item: -item[1])[:_MAX_SNAPSHOT_KEYS]
+        with self._lock:
+            counters = dict(self._counters)
+            if bounded and len(counters) > _MAX_SNAPSHOT_KEYS:
+                counters = dict(
+                    sorted(counters.items(), key=lambda item: -item[1])[
+                        :_MAX_SNAPSHOT_KEYS
+                    ]
+                )
+            snap = MetricsSnapshot(
+                snapshot_id=f"metrics-{uuid.uuid4().hex}",
+                recorded_at=datetime.now(UTC),
+                counters=counters,
+                gauges=dict(self._gauges),
+                bounded=bounded,
+                redacted=True,
             )
-        snap = MetricsSnapshot(
-            snapshot_id=f"metrics-{uuid.uuid4().hex}",
-            recorded_at=datetime.now(UTC),
-            counters=counters,
-            gauges=dict(self._gauges),
-            bounded=bounded,
-            redacted=True,
-        )
-        self._snapshots.append(snap)
-        if len(self._snapshots) > _MAX_RETAINED_SNAPSHOTS:
-            self._snapshots = self._snapshots[-_MAX_RETAINED_SNAPSHOTS:]
-        return snap
+            self._snapshots.append(snap)
+            if len(self._snapshots) > _MAX_RETAINED_SNAPSHOTS:
+                self._snapshots = self._snapshots[-_MAX_RETAINED_SNAPSHOTS:]
+            return snap
 
     def snapshots(self) -> list[MetricsSnapshot]:
-        return list(self._snapshots)
+        with self._lock:
+            return list(self._snapshots)
 
     def record_review_outcome(self, *, overridden: bool) -> None:
         """Record one completed review and whether it departed from the system."""
-        self._counters["review_outcomes.total"] += 1
-        if overridden:
-            self._counters["review_outcomes.overridden"] += 1
+        with self._lock:
+            self._counters["review_outcomes.total"] += 1
+            if overridden:
+                self._counters["review_outcomes.overridden"] += 1
 
     def oversight_summary(self) -> OversightSummary:
         """Report the override rate with a plain-language reading of it."""
-        reviews = self._counters.get("review_outcomes.total", 0)
-        overrides = self._counters.get("review_outcomes.overridden", 0)
+        with self._lock:
+            reviews = self._counters.get("review_outcomes.total", 0)
+            overrides = self._counters.get("review_outcomes.overridden", 0)
 
         if reviews < _MIN_OVERSIGHT_SAMPLE:
             return OversightSummary(
@@ -183,12 +194,14 @@ class Metrics:
         name = str(event).strip()
         if name not in USABILITY_EVENTS:
             raise ValueError(f"unknown usability event {name!r}")
-        self._counters[f"usability.{name}"] += 1
+        with self._lock:
+            self._counters[f"usability.{name}"] += 1
 
     def usability_summary(self) -> UsabilitySummary:
         """Abandonment rate, with its denominator and a plain-language reading."""
-        shown = self._counters.get("usability.precheck_shown", 0)
-        abandoned = self._counters.get("usability.rep_abandon", 0)
+        with self._lock:
+            shown = self._counters.get("usability.precheck_shown", 0)
+            abandoned = self._counters.get("usability.rep_abandon", 0)
 
         if shown < _MIN_USABILITY_SAMPLE:
             return UsabilitySummary(
@@ -224,8 +237,9 @@ class Metrics:
         )
 
     def reset(self) -> None:
-        self._counters.clear()
-        self._gauges.clear()
+        with self._lock:
+            self._counters.clear()
+            self._gauges.clear()
 
 
 __all__ = [
