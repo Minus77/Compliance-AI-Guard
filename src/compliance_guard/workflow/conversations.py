@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
@@ -109,6 +110,7 @@ class ConversationStore:
         self._now = now or (lambda: datetime.now(UTC))
         self._lifetime = lifetime
         self._sessions: dict[str, ConversationSession] = {}
+        self._lock = threading.Lock()
 
     def create(
         self,
@@ -142,6 +144,38 @@ class ConversationStore:
         actor_id: str,
         rule_version: str,
     ) -> ConversationSession:
+        return self._active_session(
+            conversation_id,
+            tenant_id,
+            actor_id,
+            rule_version,
+        ).model_copy(deep=True)
+
+    def consume(
+        self,
+        conversation_id: str,
+        tenant_id: str,
+        actor_id: str,
+        rule_version: str,
+    ) -> ConversationSession:
+        """Atomically close an active session before its one model attempt."""
+        with self._lock:
+            session = self._active_session(
+                conversation_id,
+                tenant_id,
+                actor_id,
+                rule_version,
+            )
+            session.status = "closed"
+            return session.model_copy(deep=True)
+
+    def _active_session(
+        self,
+        conversation_id: str,
+        tenant_id: str,
+        actor_id: str,
+        rule_version: str,
+    ) -> ConversationSession:
         session = self._sessions.get(conversation_id)
         if (
             session is None
@@ -153,7 +187,7 @@ class ConversationStore:
             raise ConversationStaleError(conversation_id)
         if session.status != "active" or self._now() >= session.expires_at:
             raise ConversationExpiredError(conversation_id)
-        return session.model_copy(deep=True)
+        return session
 
 
 class ConversationGuard:
@@ -295,6 +329,12 @@ class ConversationGuard:
         )
         if not session.inspected_content_matches(request.content):
             raise ConversationPromptMismatchError(conversation_id)
+        session = self._store.consume(
+            conversation_id,
+            request.tenant_id,
+            actor.actor_id,
+            current_rules.policy_version,
+        )
 
         model_called = False
         candidate = ""

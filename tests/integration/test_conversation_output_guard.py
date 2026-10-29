@@ -128,6 +128,37 @@ def test_allowed_output_is_published_once_after_an_output_check(app_services):
     assert len(gateway.calls) == 1
 
 
+@pytest.mark.parametrize("first_generation_raises", [False, True])
+def test_checked_session_can_call_the_model_only_once(
+    app_services, first_generation_raises
+):
+    gateway = ConversationGateway()
+    gateway.raises = first_generation_raises
+    client = _client(app_services, gateway)
+    conversation_id = _approved_session(client)
+    payload = {
+        "tenant_id": "TENANT-A",
+        "content": "请概述成人高血压用药时需要注意的安全信息。",
+    }
+
+    first = client.post(
+        f"/api/conversations/{conversation_id}/generate",
+        json=payload,
+        headers={"x-demo-role": "field_rep"},
+    )
+    gateway.raises = False
+    second = client.post(
+        f"/api/conversations/{conversation_id}/generate",
+        json=payload,
+        headers={"x-demo-role": "field_rep"},
+    )
+
+    assert first.status_code == (503 if first_generation_raises else 200)
+    assert second.status_code == 410
+    assert second.json()["error"]["code"] == "conversation_expired"
+    assert len(gateway.calls) == 1
+
+
 def test_client_cannot_replace_the_checked_prompt(app_services):
     gateway = ConversationGateway()
     client = _client(app_services, gateway)
@@ -141,6 +172,14 @@ def test_client_cannot_replace_the_checked_prompt(app_services):
 
     assert response.status_code == 409
     assert gateway.calls == []
+
+    session = app_services.conversations._store.get(
+        conversation_id,
+        "TENANT-A",
+        "demo-field_rep",
+        app_services.policy_store.current().policy_version,
+    )
+    assert session.status == "active"
 
 
 @pytest.mark.parametrize("failure", ["provider_timeout", "schema"])
