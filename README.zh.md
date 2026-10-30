@@ -130,6 +130,7 @@ LLM_MODE=live PYTHONPATH=src .venv/bin/python -m uvicorn apps.api.main:app --por
 
 | 文档 | English | 内容 |
 | --- | --- | --- |
+| [产品手册](docs/zh/product-guide.md) | [Product guide](docs/product-guide.md) | 面向用户与部署者的定位、安装、功能说明、API、架构图、安全边界与限制 |
 | [架构设计](docs/zh/architecture.md) | [architecture](docs/architecture.md) | 共享控制面、请求路径、AI 三阶段、策略规则、数据模型、失败状态 |
 | [运维手册](docs/zh/operations.md) | [operations](docs/operations.md) | 安装、七工作区、规则与模型生命周期、真实模式、故障处置、留存 |
 | [安全与风险](docs/zh/security-and-risk.md) | [security-and-risk](docs/security-and-risk.md) | 信任边界、风险登记册、打码、注入防御、审计隐私、范围边界 |

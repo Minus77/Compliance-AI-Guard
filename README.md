@@ -148,6 +148,7 @@ unchecked text.
 
 | Document | 中文 | Contents |
 | --- | --- | --- |
+| [Product guide](docs/product-guide.md) | [产品手册](docs/zh/product-guide.md) | Audience-focused setup, feature walkthroughs, APIs, architecture diagrams, security boundaries, limitations |
 | [architecture.md](docs/architecture.md) | [架构设计](docs/zh/architecture.md) | Shared control plane, request paths, three AI stages, policy rules, data model, failure states |
 | [operations.md](docs/operations.md) | [运维手册](docs/zh/operations.md) | Setup, seven workspaces, rule and model lifecycle, live mode, failure playbooks, retention |
 | [security-and-risk.md](docs/security-and-risk.md) | [安全与风险](docs/zh/security-and-risk.md) | Trust boundaries, risk register, masking, injection defence, audit privacy, scope limits |
