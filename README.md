@@ -160,3 +160,9 @@ unchecked text.
 
 Python 3.12+, FastAPI, Pydantic v2, uvicorn, and `httpx`. The interface is vanilla
 JavaScript with no build step. Standalone storage is local JSON and JSONL.
+
+## License
+
+Released under the [MIT License](LICENSE).
+
+Copyright (c) 2026 trooly
