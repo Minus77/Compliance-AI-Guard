@@ -818,7 +818,7 @@ git commit -m "refactor: generalize product data and workflows"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `README.zh.md`
+- Modify: `README.en.md`
 - Modify: `docs/architecture.md`
 - Modify: `docs/operations.md`
 - Modify: `docs/security-and-risk.md`
@@ -842,7 +842,7 @@ git commit -m "refactor: generalize product data and workflows"
 
 ```python
 def test_docs_describe_the_two_public_entries_and_ai_guard_stages():
-    for path in ("README.md", "README.zh.md"):
+    for path in ("README.en.md", "README.md"):
         text = Path(path).read_text(encoding="utf-8")
         assert "/api/checks" in text
         assert "/api/conversations/guard-input" in text
@@ -851,8 +851,8 @@ def test_docs_describe_the_two_public_entries_and_ai_guard_stages():
 
 
 def test_docs_do_not_claim_regulatory_certification_or_name_a_design_source():
-    english = Path("README.md").read_text(encoding="utf-8").casefold()
-    chinese = Path("README.zh.md").read_text(encoding="utf-8")
+    english = Path("README.en.md").read_text(encoding="utf-8").casefold()
+    chinese = Path("README.md").read_text(encoding="utf-8")
     assert "certified" not in english
     assert "参考" not in chinese
     assert "外部产品" not in chinese
@@ -903,7 +903,7 @@ Start the app with `PYTHONPATH=src python3 -m uvicorn apps.api.main:app`, submit
 - [ ] **Step 9: Commit and push**
 
 ```bash
-git add README.md README.zh.md docs tests artifacts/eval-report.json
+git add README.md README.en.md docs tests artifacts/eval-report.json
 git commit -m "docs: document standalone medical AI compliance gateway"
 git push origin feature/medical-ai-compliance-gateway
 ```

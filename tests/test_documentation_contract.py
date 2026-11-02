@@ -32,7 +32,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
         "docs/validation.md",
         "docs/integration-contracts.md",
         "docs/decisions/0001-workflow-first-controlled-agent.md",
-        "README.zh.md",
+        "README.en.md",
         "docs/zh/architecture.md",
         "docs/zh/operations.md",
         "docs/zh/security-and-risk.md",
@@ -113,7 +113,7 @@ def test_validation_doc_records_the_release_gates():
 
 def test_scope_limits_are_stated_in_the_readme():
     """The demo/production boundary is a claim about honesty, so it is tested."""
-    text = (_PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    text = (_PROJECT_ROOT / "README.en.md").read_text(encoding="utf-8")
     assert "no claim" in text.casefold()
     assert "synthetic" in text.casefold()
 
@@ -121,7 +121,7 @@ def test_scope_limits_are_stated_in_the_readme():
 # -- bilingual contract ------------------------------------------------------
 
 _LANGUAGE_PAIRS = [
-    ("README.md", "README.zh.md"),
+    ("README.en.md", "README.md"),
     ("docs/architecture.md", "docs/zh/architecture.md"),
     ("docs/operations.md", "docs/zh/operations.md"),
     ("docs/security-and-risk.md", "docs/zh/security-and-risk.md"),
@@ -252,8 +252,8 @@ def test_release_gate_count_agrees_across_languages():
 
 def test_scope_limits_are_stated_in_both_readmes():
     """The honesty disclaimer must not exist only in the language nobody reads."""
-    english = (_PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
-    chinese = (_PROJECT_ROOT / "README.zh.md").read_text(encoding="utf-8")
+    english = (_PROJECT_ROOT / "README.en.md").read_text(encoding="utf-8")
+    chinese = (_PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "no claim" in english.casefold()
     assert "synthetic" in english.casefold()
@@ -261,7 +261,7 @@ def test_scope_limits_are_stated_in_both_readmes():
     assert "合成" in chinese
 
 
-@pytest.mark.parametrize("relative_path", ["README.md", "README.zh.md"])
+@pytest.mark.parametrize("relative_path", ["README.md", "README.en.md"])
 def test_readmes_describe_the_shared_public_entries(relative_path):
     text = (_PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
 
@@ -272,7 +272,7 @@ def test_readmes_describe_the_shared_public_entries(relative_path):
         assert required in text, f"{relative_path} does not document {required}"
 
 
-@pytest.mark.parametrize("relative_path", ["README.md", "README.zh.md"])
+@pytest.mark.parametrize("relative_path", ["README.md", "README.en.md"])
 def test_readmes_describe_the_three_ai_stages(relative_path):
     text = (_PROJECT_ROOT / relative_path).read_text(encoding="utf-8").casefold()
 
@@ -280,7 +280,7 @@ def test_readmes_describe_the_three_ai_stages(relative_path):
         assert stage in text, f"{relative_path} does not document the {stage} stage"
 
 
-@pytest.mark.parametrize("relative_path", ["README.md", "README.zh.md"])
+@pytest.mark.parametrize("relative_path", ["README.md", "README.en.md"])
 def test_readmes_list_the_seven_workspaces(relative_path):
     text = (_PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
 
@@ -299,8 +299,8 @@ def test_readmes_list_the_seven_workspaces(relative_path):
 
 
 def test_readme_does_not_use_unverified_or_stale_scope_language():
-    english = (_PROJECT_ROOT / "README.md").read_text(encoding="utf-8").casefold()
-    chinese = (_PROJECT_ROOT / "README.zh.md").read_text(encoding="utf-8")
+    english = (_PROJECT_ROOT / "README.en.md").read_text(encoding="utf-8").casefold()
+    chinese = (_PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "certified" not in english
     assert "参考" not in chinese
